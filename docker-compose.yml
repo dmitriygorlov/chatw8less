@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatw8less_app
+    environment:
+      # Required variables
+      - TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}
+      - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SITE_URL=${SITE_URL}
+      - DATABASE_PATH=${DATABASE_PATH:-/app/storage/chatw8less.sqlite3}
+      - WEB_SESSION_DAYS=${WEB_SESSION_DAYS:-30}
+      - PORT=${PORT:-8000}
+      # Model configuration
+      - GPT_MODEL_FAST=${GPT_MODEL_FAST:-gpt-4o-mini}
+      - GPT_MODEL_SMART=${GPT_MODEL_SMART:-gpt-4o-mini}
+      # Optional: only pass if set in .env (uncomment and set if needed)
+      # - GPT_MODEL_FAST_VISION=${GPT_MODEL_FAST_VISION}
+      # - GPT_MODEL_SMART_VISION=${GPT_MODEL_SMART_VISION}
+      # - MAX_TOKENS_FAST=${MAX_TOKENS_FAST}
+      # - MAX_TOKENS_SMART=${MAX_TOKENS_SMART}
+      # - DEFAULT_MODEL_MODE=${DEFAULT_MODEL_MODE}
+      # - OPENAI_PHOTO_DETAIL=${OPENAI_PHOTO_DETAIL}
+      # - TOKENS_LOG_FILE=${TOKENS_LOG_FILE}
+      # User configuration
+      - SUPPORT_CONTACT=${SUPPORT_CONTACT:-test}
+      - HOUR_SHIFT=${HOUR_SHIFT:-0}
+    volumes:
+      - ./logs:/app/logs
+      - ./storage:/app/storage
+    ports:
+      - "8000:${PORT:-8000}"
+    command: sh -c "uvicorn web_app:app --host 0.0.0.0 --port ${PORT:-8000}"

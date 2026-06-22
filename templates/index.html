@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="{{ language_code }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatW8Less</title>
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}">
+</head>
+<body>
+{% if authenticated %}
+    <main class="app-layout">
+        <header class="app-header">
+            <div>
+                <h1>ChatW8Less</h1>
+                <p id="user-subtitle" class="user-subtitle">
+                    <strong>{{ current_user.display_name or current_user.id }}</strong>
+                </p>
+            </div>
+            <form action="/logout" method="post">
+                <button type="submit" class="ghost-button" data-i18n="web.logout">{{ tr["web.logout"] }}</button>
+            </form>
+        </header>
+
+        <section class="card composer-card">
+            <div class="section-head">
+                <div>
+                    <p class="eyebrow" data-i18n="web.action">{{ tr["web.action"] }}</p>
+                    <h2 data-i18n="web.what_to_do">{{ tr["web.what_to_do"] }}</h2>
+                </div>
+            </div>
+
+            <div class="tool-tabs" id="tool-tabs">
+                <button type="button" class="tool-tab active" data-tool="food" data-i18n="web.food">{{ tr["web.food"] }}</button>
+                <button type="button" class="tool-tab" data-tool="photo" data-i18n="web.food_photo">{{ tr["web.food_photo"] }}</button>
+                <button type="button" class="tool-tab" data-tool="hundred" data-i18n="web.tool_hundred">{{ tr["web.tool_hundred"] }}</button>
+                <button type="button" class="tool-tab" data-tool="online" data-i18n="web.ask_assistant">{{ tr["web.ask_assistant"] }}</button>
+            </div>
+
+            <form id="chat-form" class="composer">
+                <div id="assistant-prompts" class="quick-prompts hidden" aria-label="{{ tr['web.prompt_presets'] }}"></div>
+
+                <div id="text-box">
+                    <label class="composer-label" for="chat-input" data-i18n="web.message">{{ tr["web.message"] }}</label>
+                    <textarea id="chat-input" rows="5" placeholder="{{ tr['web.placeholder_food'] }}"></textarea>
+                </div>
+
+                <div id="photo-box" class="photo-box hidden">
+                    <label class="composer-label" for="photo-input" data-i18n="web.food_photo">{{ tr["web.food_photo"] }}</label>
+                    <input id="photo-input" type="file" accept="image/*">
+                    <input id="photo-caption" type="text" placeholder="{{ tr['web.photo_caption'] }}">
+                    <p class="helper-text" data-i18n="web.photo_helper">{{ tr["web.photo_helper"] }}</p>
+                </div>
+
+                <div class="composer-actions">
+                    <button id="primary-action" type="submit" class="primary-button" data-i18n="web.estimate">{{ tr["web.estimate"] }}</button>
+                </div>
+            </form>
+
+            <div id="action-loading" class="action-loading hidden" aria-live="polite">
+                <span class="spinner" aria-hidden="true"></span>
+                <span id="action-loading-text" data-i18n="web.processing">{{ tr["web.processing"] }}</span>
+            </div>
+
+            <div id="last-response-card" class="last-response-card hidden">
+                <div id="last-response-text" class="last-response-text"></div>
+            </div>
+
+            <div id="assistant-history-card" class="assistant-history-card hidden">
+                <div class="assistant-history-head">
+                    <div>
+                        <p class="eyebrow" data-i18n="web.assistant_history">{{ tr["web.assistant_history"] }}</p>
+                        <h3 data-i18n="web.context_memory">{{ tr["web.context_memory"] }}</h3>
+                    </div>
+                    <button id="toggle-assistant-history-button" type="button" class="ghost-button small-button hidden" data-i18n="web.show_more_dialogs">{{ tr["web.show_more_dialogs"] }}</button>
+                </div>
+                <div id="assistant-history-list" class="assistant-history-list"></div>
+            </div>
+
+            <div id="pending-save-card" class="pending-save-card hidden">
+                <div>
+                    <p class="eyebrow" data-i18n="web.last_analysis">{{ tr["web.last_analysis"] }}</p>
+                    <h3 data-i18n="web.save_prompt">{{ tr["web.save_prompt"] }}</h3>
+                    <p id="pending-save-text" class="subtitle" data-i18n="web.pending_save_default">{{ tr["web.pending_save_default"] }}</p>
+                </div>
+                <button id="save-last-analysis-button" type="button" class="primary-button" data-i18n="web.save_last">{{ tr["web.save_last"] }}</button>
+            </div>
+        </section>
+
+        <section class="grid-two">
+            <section class="card">
+                <div class="section-head">
+                    <div>
+                        <p class="eyebrow" data-i18n="web.stats">{{ tr["web.stats"] }}</p>
+                        <h2 data-i18n="web.nutrition_summary">{{ tr["web.nutrition_summary"] }}</h2>
+                    </div>
+                    <div class="section-actions">
+                        <div id="stats-tabs" class="stats-tabs">
+                            <button type="button" class="stats-tab active" data-stats="today" data-i18n="web.stats_today">{{ tr["web.stats_today"] }}</button>
+                            <button type="button" class="stats-tab" data-stats="yesterday" data-i18n="web.stats_yesterday">{{ tr["web.stats_yesterday"] }}</button>
+                            <button type="button" class="stats-tab" data-stats="last7" data-i18n="web.stats_7">{{ tr["web.stats_7"] }}</button>
+                            <button type="button" class="stats-tab" data-stats="all" data-i18n="web.all">{{ tr["web.all"] }}</button>
+                        </div>
+                        <button type="button" class="section-toggle" data-toggle-section="stats" data-i18n="web.hide">{{ tr["web.hide"] }}</button>
+                    </div>
+                </div>
+                <div id="section-stats-content">
+                    <div id="stats-output" class="stats-output"></div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="section-head">
+                    <div>
+                        <p class="eyebrow" data-i18n="web.settings">{{ tr["web.settings"] }}</p>
+                        <h2 data-i18n="web.limit_and_model">{{ tr["web.limit_and_model"] }}</h2>
+                    </div>
+                    <button type="button" class="section-toggle" data-toggle-section="settings" data-i18n="web.hide">{{ tr["web.hide"] }}</button>
+                </div>
+                <div id="section-settings-content" class="settings-stack">
+                    <div>
+                        <label class="composer-label" for="daily-limit-input" data-i18n="web.daily_limit">{{ tr["web.daily_limit"] }}</label>
+                        <div class="inline-actions">
+                            <input id="daily-limit-input" type="number" min="1" placeholder="1800">
+                            <button id="save-limit-button" type="button" class="primary-button" data-i18n="web.save_limit">{{ tr["web.save_limit"] }}</button>
+                            <button id="clear-limit-button" type="button" class="ghost-button" data-i18n="web.clear">{{ tr["web.clear"] }}</button>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="composer-label" data-i18n="language.label">{{ tr["language.label"] }}</p>
+                        <div id="language-buttons" class="mode-buttons"></div>
+                        <div class="inline-actions">
+                            <input id="custom-language-input" type="text" placeholder="{{ tr['language.generate_placeholder'] }}">
+                            <button id="generate-language-button" type="button" class="ghost-button" data-i18n="language.generate_button">{{ tr["language.generate_button"] }}</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="composer-label" for="assistant-name-input" data-i18n="web.assistant_name">{{ tr["web.assistant_name"] }}</label>
+                        <div class="inline-actions">
+                            <input id="assistant-name-input" type="text" maxlength="40" placeholder="Alex">
+                            <button id="save-assistant-name-button" type="button" class="primary-button" data-i18n="web.save_assistant_name">{{ tr["web.save_assistant_name"] }}</button>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="composer-label" data-i18n="web.model_mode">{{ tr["web.model_mode"] }}</p>
+                        <div id="mode-buttons" class="mode-buttons"></div>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <div>
+                    <p class="eyebrow" data-i18n="web.history">{{ tr["web.history"] }}</p>
+                    <h2 data-i18n="web.saved_meals">{{ tr["web.saved_meals"] }}</h2>
+                </div>
+                <button type="button" class="section-toggle" data-toggle-section="nutrition" data-i18n="web.hide">{{ tr["web.hide"] }}</button>
+            </div>
+            <div id="section-nutrition-content">
+                <div id="nutrition-history" class="nutrition-history"></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <div>
+                    <p class="eyebrow" data-i18n="web.message">{{ tr["web.message"] }}</p>
+                    <h2 data-i18n="web.dialog_history">{{ tr["web.dialog_history"] }}</h2>
+                </div>
+                <button type="button" class="section-toggle" data-toggle-section="messages" data-i18n="web.hide">{{ tr["web.hide"] }}</button>
+            </div>
+            <div id="section-messages-content">
+                <div id="message-list" class="message-list"></div>
+            </div>
+        </section>
+
+        <section class="card import-card">
+            <div class="section-head">
+                <div>
+                    <p class="eyebrow" data-i18n="web.support">{{ tr["web.support"] }}</p>
+                    <h2 data-i18n="web.import">{{ tr["web.import"] }}</h2>
+                </div>
+                <button type="button" class="section-toggle" id="toggle-import-button" data-i18n="web.import_show">{{ tr["web.import_show"] }}</button>
+            </div>
+            <div id="import-content" class="hidden">
+                <label class="composer-label" for="legacy-import-input" data-i18n="web.import_label">{{ tr["web.import_label"] }}</label>
+                <div class="import-box">
+                    <input id="legacy-import-input" type="file" accept=".zip,application/zip">
+                    <button id="legacy-import-button" type="button" class="ghost-button" data-i18n="web.import_button">{{ tr["web.import_button"] }}</button>
+                </div>
+                <p class="helper-text" data-i18n="web.import_hint">{{ tr["web.import_hint"] }}</p>
+            </div>
+        </section>
+    </main>
+    <div id="toast" class="toast hidden"></div>
+    <script>
+        window.CHATW8LESS_LOCALE = {{ locale | tojson }};
+    </script>
+    <script src="/static/app.js?v={{ asset_version }}"></script>
+{% else %}
+    <main class="login-layout">
+        <section class="login-card">
+            <p class="eyebrow">ChatW8Less</p>
+            <h1>{{ tr["web.login_title"] }}</h1>
+            <p class="subtitle">{{ tr["web.login_subtitle"] }}</p>
+            {% if login_error %}
+                <p class="login-error">{{ tr["web.login_error"] }}</p>
+            {% endif %}
+            <form class="login-form" action="/login" method="post">
+                <label for="phrase">{{ tr["web.login_label"] }}</label>
+                <input id="phrase" name="phrase" type="password" placeholder="{{ tr['web.login_placeholder'] }}" autofocus>
+                <button type="submit" class="primary-button">{{ tr["web.login_button"] }}</button>
+            </form>
+        </section>
+    </main>
+{% endif %}
+</body>
+</html>

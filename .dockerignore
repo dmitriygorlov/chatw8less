@@ -1,0 +1,17 @@
+.env
+.git/
+.github/
+.pytest_cache/
+.pytest_deps/
+.pytest_tmp/
+.runtime_check/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+logs/
+storage/
+experiments/
+__/
+test.py
