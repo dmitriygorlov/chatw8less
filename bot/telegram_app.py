@@ -10,6 +10,7 @@ from bot.config import (
     HOUR_SHIFT,
     TELEGRAM_API_TOKEN,
 )
+from bot.i18n import DEFAULT_LANGUAGE, supported_language_codes, t
 from bot.logger_setup import setup_logging
 from bot.middlewares import AllowedUserFilter, LoggingMiddleware
 from bot.states import (
@@ -23,24 +24,42 @@ from bot.states import (
 )
 
 
+COMMANDS = (
+    ("help", "telegram.command.help"),
+    ("stats", "telegram.command.stats"),
+    ("100", "telegram.command.100"),
+    ("online", "telegram.command.online"),
+    ("edit", "telegram.command.edit"),
+    ("limits", "telegram.command.limits"),
+    ("model", "telegram.command.model"),
+    ("language", "telegram.command.language"),
+    ("site", "telegram.command.site"),
+    ("id", "telegram.command.id"),
+)
+
+
+def _localized_commands(language_code: str | None) -> list[BotCommand]:
+    return [
+        BotCommand(command=command, description=t(language_code, key))
+        for command, key in COMMANDS
+    ]
+
+
+async def _set_localized_commands(bot: Bot) -> None:
+    await bot.set_my_commands(_localized_commands(DEFAULT_LANGUAGE))
+    for language_code in supported_language_codes():
+        await bot.set_my_commands(
+            _localized_commands(language_code),
+            language_code=language_code,
+        )
+
+
 async def create_bot() -> Bot:
     if not TELEGRAM_API_TOKEN:
         raise RuntimeError("TELEGRAM_API_TOKEN is not configured")
 
     bot = Bot(token=TELEGRAM_API_TOKEN)
-    commands = [
-        BotCommand(command="help", description="Help"),
-        BotCommand(command="stats", description="Nutrition statistics"),
-        BotCommand(command="100", description="Nutrition per 100 g"),
-        BotCommand(command="online", description="Online search"),
-        BotCommand(command="edit", description="Edit nutrition data"),
-        BotCommand(command="limits", description="Calorie limit"),
-        BotCommand(command="model", description="Model mode"),
-        BotCommand(command="language", description="Language"),
-        BotCommand(command="site", description="Website and passphrase"),
-        BotCommand(command="id", description="Telegram ID"),
-    ]
-    await bot.set_my_commands(commands)
+    await _set_localized_commands(bot)
     return bot
 
 

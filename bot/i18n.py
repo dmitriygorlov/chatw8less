@@ -8,8 +8,9 @@ from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOCALES_DIR = BASE_DIR / "locales"
+LEGACY_GENERATED_LOCALES_DIR = BASE_DIR / "storage" / "generated_locales"
 GENERATED_LOCALES_DIR = Path(
-    os.getenv("GENERATED_LOCALES_DIR") or BASE_DIR / "storage" / "generated_locales"
+    os.getenv("GENERATED_LOCALES_DIR") or LOCALES_DIR
 )
 DEFAULT_LANGUAGE = "en"
 EXISTING_USER_DEFAULT_LANGUAGE = "ru"
@@ -42,17 +43,23 @@ def _locale_path(language_code: str) -> Path | None:
     generated = GENERATED_LOCALES_DIR / f"{safe_code}.json"
     if generated.exists():
         return generated
+    legacy_generated = LEGACY_GENERATED_LOCALES_DIR / f"{safe_code}.json"
+    if legacy_generated.exists():
+        return legacy_generated
     return None
 
 
 def generated_language_codes() -> list[str]:
-    if not GENERATED_LOCALES_DIR.exists():
-        return []
-    return sorted(
-        path.stem
-        for path in GENERATED_LOCALES_DIR.glob("*.json")
-        if _safe_language_code(path.stem) == path.stem
-    )
+    codes = set()
+    for directory in (GENERATED_LOCALES_DIR, LEGACY_GENERATED_LOCALES_DIR):
+        if not directory.exists():
+            continue
+        codes.update(
+            path.stem
+            for path in directory.glob("*.json")
+            if _safe_language_code(path.stem) == path.stem
+        )
+    return sorted(codes)
 
 
 def supported_language_codes() -> tuple[str, ...]:

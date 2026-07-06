@@ -13,6 +13,7 @@ import bot.config as config
 import bot.db as db
 import bot.handlers as handlers
 import bot.i18n as i18n
+import bot.telegram_app as telegram_app
 import bot.utils as utils
 import web_app
 
@@ -21,12 +22,15 @@ import web_app
 def isolated_env(tmp_path, monkeypatch):
     db_path = tmp_path / "chatw8less.sqlite3"
     storage_dir = tmp_path / "storage"
+    locales_dir = tmp_path / "locales"
     storage_dir.mkdir(parents=True, exist_ok=True)
+    locales_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(config, "DATABASE_PATH", str(db_path), raising=False)
     monkeypatch.setattr(db, "DATABASE_PATH", str(db_path), raising=False)
     monkeypatch.setattr(utils, "STORAGE_DIR", str(storage_dir), raising=False)
-    monkeypatch.setattr(i18n, "GENERATED_LOCALES_DIR", storage_dir / "generated_locales", raising=False)
+    monkeypatch.setattr(i18n, "GENERATED_LOCALES_DIR", locales_dir, raising=False)
+    monkeypatch.setattr(i18n, "LEGACY_GENERATED_LOCALES_DIR", storage_dir / "generated_locales", raising=False)
     monkeypatch.setattr(web_app, "TELEGRAM_API_TOKEN", "", raising=False)
     i18n.load_locale.cache_clear()
 
@@ -38,6 +42,7 @@ def isolated_env(tmp_path, monkeypatch):
     return {
         "db_path": db_path,
         "storage_dir": storage_dir,
+        "locales_dir": locales_dir,
     }
 
 
@@ -612,6 +617,18 @@ def test_new_telegram_user_uses_account_language_or_english(isolated_env):
     assert supported["assistant_name"] == "Alex"
 
 
+def test_telegram_commands_are_localized():
+    descriptions = {
+        command.command: command.description
+        for command in telegram_app._localized_commands("ru")
+    }
+
+    assert descriptions["help"] == "Помощь"
+    assert descriptions["stats"] == "Статистика питания"
+    assert descriptions["online"] == "Поиск онлайн"
+    assert descriptions["site"] == "Сайт и кодовая фраза"
+
+
 def test_language_endpoint_can_generate_new_locale(isolated_env, monkeypatch):
     create_user(user_id="gen_user", phrase="gen phrase")
     source = app_services.load_locale("en")
@@ -663,6 +680,8 @@ def test_language_endpoint_can_generate_new_locale(isolated_env, monkeypatch):
     assert payload["settings"]["language_code"] == "it"
     assert payload["locale"]["language_code"] == "it"
     assert any(language["code"] == "it" for language in payload["locale"]["languages"])
+    assert (isolated_env["locales_dir"] / "it.json").exists()
+    assert not (isolated_env["storage_dir"] / "generated_locales" / "it.json").exists()
 
 
 def test_legacy_storage_zip_import_endpoint_merges_history(isolated_env):
