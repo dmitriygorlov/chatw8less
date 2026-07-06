@@ -167,7 +167,12 @@ async function apiFetch(url, options = {}) {
         ...options,
         headers,
     });
-    const payload = await response.json();
+    let payload = {};
+    try {
+        payload = await response.json();
+    } catch {
+        payload = {};
+    }
     if (!response.ok) {
         throw new Error(payload.detail || "Request failed");
     }
@@ -782,6 +787,13 @@ async function analyzePhotoAndFood() {
     showToast(t("web.photo_processed"));
 }
 
+function clearSelectedPhoto() {
+    const fileInput = $("photo-input");
+    if (fileInput) {
+        fileInput.value = "";
+    }
+}
+
 async function savePendingAnalysis() {
     if (state.savingPendingAnalysis) {
         return;
@@ -961,7 +973,15 @@ function bindEvents() {
 
             if (state.tool === "photo") {
                 setActionLoading(true, t("web.estimate_photo"));
-                await analyzePhotoAndFood();
+                try {
+                    await analyzePhotoAndFood();
+                } catch (error) {
+                    clearSelectedPhoto();
+                    const message = error instanceof TypeError
+                        ? t("web.photo_error")
+                        : (error.message || t("web.photo_error"));
+                    showToast(message);
+                }
                 return;
             }
 

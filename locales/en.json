@@ -163,6 +163,7 @@
   "web.pending_save_many": "Latest answer contains {count} items. If everything looks right, you can save it as a new meal.",
   "web.pending_save_one": "Latest answer is ready. If everything looks right, you can save it as a new meal.",
   "web.photo_caption": "Photo comment, if needed",
+  "web.photo_error": "Could not process the photo. Choose it again or try another image.",
   "web.photo_first": "Choose a photo first.",
   "web.photo_helper": "The website first recognizes the photo and shows the calculation. Saving appears only after the answer.",
   "web.photo_processed": "Photo processed. You can save it if the result looks right.",

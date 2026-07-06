@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -410,7 +411,14 @@ async def api_photo_analyze(
         raise HTTPException(status_code=400, detail="Image is required")
 
     photo_data_url = _photo_to_data_url(photo, raw_bytes)
-    result = await analyze_photo(user["id"], photo_data_url, caption=caption.strip())
+    try:
+        result = await analyze_photo(user["id"], photo_data_url, caption=caption.strip())
+    except Exception as exc:
+        logging.exception("Photo analysis failed for user %s: %s", user["id"], exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Не получилось обработать фото. Попробуй выбрать его ещё раз или отправить другое.",
+        ) from exc
     return result
 
 

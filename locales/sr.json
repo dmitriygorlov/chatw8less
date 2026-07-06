@@ -163,6 +163,7 @@
   "web.pending_save_many": "Poslednji odgovor sadrži {count} stavki. Ako je sve u redu, možeš ga sačuvati kao novi obrok.",
   "web.pending_save_one": "Poslednji odgovor je spreman. Ako je sve u redu, možeš ga sačuvati kao novi obrok.",
   "web.photo_caption": "Komentar uz fotografiju, ako treba",
+  "web.photo_error": "Fotografija nije obrađena. Izaberi je ponovo ili probaj drugu sliku.",
   "web.photo_first": "Prvo izaberi fotografiju.",
   "web.photo_helper": "Sajt prvo prepoznaje fotografiju i prikazuje obračun. Čuvanje se pojavljuje tek posle odgovora.",
   "web.photo_processed": "Fotografija je obrađena. Možeš sačuvati ako rezultat odgovara.",
