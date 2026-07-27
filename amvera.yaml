@@ -1,0 +1,3 @@
+run:
+  persistenceMount: /data
+  containerPort: 8000
