@@ -1,9 +1,11 @@
 import asyncio
 import base64
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -67,9 +69,22 @@ ASSET_VERSION = str(
 )
 
 
+def _migration_target_url() -> str:
+    target = os.getenv("MIGRATION_TARGET_URL", "").strip().rstrip("/")
+    parsed = urlparse(target)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return target
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    if _migration_target_url():
+        app.state.telegram_task = None
+        yield
+        return
+
     init_db()
     if TELEGRAM_API_TOKEN and should_run_telegram_in_web():
         app.state.telegram_task = asyncio.create_task(run_telegram_polling())
@@ -94,6 +109,19 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.middleware("http")
 async def disable_dynamic_response_caching(request: Request, call_next):
+    migration_target = _migration_target_url()
+    migration_paths = {"/", "/healthz", "/favicon.ico"}
+    if (
+        migration_target
+        and request.url.path not in migration_paths
+        and not request.url.path.startswith("/static/")
+    ):
+        response = RedirectResponse(url=migration_target, status_code=303)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
     response = await call_next(request)
     if request.url.path == "/" or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -223,6 +251,14 @@ def _photo_to_data_url(photo: UploadFile, raw_bytes: bytes) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
+    migration_target = _migration_target_url()
+    if migration_target:
+        return templates.TemplateResponse(
+            request,
+            "migration.html",
+            {"target_url": migration_target},
+        )
+
     user = _get_current_user(request)
     language_code = (
         user.get("language_code")

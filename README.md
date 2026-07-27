@@ -126,6 +126,18 @@ WEB_COOKIE_SECURE=true
 RUN_TELEGRAM_IN_WEB=true
 ```
 
+To keep an old host online as a migration landing page, set only the target
+address and disable Telegram polling:
+
+```env
+MIGRATION_TARGET_URL=https://new-site.example.com
+RUN_TELEGRAM_IN_WEB=false
+```
+
+Migration mode does not initialize the database or start Telegram polling.
+The home page shows a move notice and button, while other application routes
+redirect to the new site using `303 See Other`.
+
 ## Tests
 
 ```bash

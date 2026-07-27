@@ -36,6 +36,7 @@ def isolated_env(tmp_path, monkeypatch):
 
     monkeypatch.setenv("RUN_TELEGRAM_IN_WEB", "false")
     monkeypatch.setenv("SITE_URL", "http://testserver")
+    monkeypatch.delenv("MIGRATION_TARGET_URL", raising=False)
     monkeypatch.delenv("WEB_COOKIE_SECURE", raising=False)
 
     db.init_db()
@@ -52,6 +53,32 @@ def create_client(base_url="http://testserver"):
 
 def create_user(user_id="u1", phrase="secret phrase", name="Test User"):
     return db.create_or_update_user(name, phrase, user_id=user_id)
+
+
+def test_migration_mode_serves_stub_without_starting_database_or_telegram(monkeypatch):
+    target = "https://new-chatw8less.example.com"
+    monkeypatch.setenv("MIGRATION_TARGET_URL", target)
+    monkeypatch.setattr(
+        web_app,
+        "init_db",
+        lambda: pytest.fail("migration mode must not initialize the database"),
+    )
+    monkeypatch.setattr(web_app, "TELEGRAM_API_TOKEN", "configured", raising=False)
+
+    with create_client() as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "ChatW8Less переехал" in response.text
+        assert f'href="{target}"' in response.text
+        assert client.app.state.telegram_task is None
+
+        api_response = client.post("/api/message", follow_redirects=False)
+        assert api_response.status_code == 303
+        assert api_response.headers["location"] == target
+
+        health_response = client.get("/healthz")
+        assert health_response.status_code == 200
+        assert health_response.json() == {"status": "ok"}
 
 
 def test_login_success_local_cookie_and_history_access(isolated_env):
