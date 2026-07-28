@@ -53,6 +53,7 @@ from bot.db import (
 from bot.i18n import locale_payload, parse_accept_language, t
 from bot.logger_setup import setup_logging
 from bot.telegram_app import run_telegram_polling
+from bot.utils import load_user_data_new
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -216,14 +217,35 @@ def _mode_options(language_code: str) -> list[dict[str, str]]:
 def _dashboard_payload(user: dict) -> dict[str, Any]:
     user_id = user["id"]
     language_code = user.get("language_code") or "en"
+    user_data = load_user_data_new(user_id)
     return {
         "user": _user_payload(user),
         "messages": get_chat_history(user_id),
-        "settings": get_user_settings(user_id),
-        "stats": get_statistics_bundle(user_id),
-        "nutrition_history": get_nutrition_history(user_id),
+        "settings": get_user_settings(user_id, user_data=user_data, user=user),
+        "stats": get_statistics_bundle(
+            user_id,
+            user_data=user_data,
+            language_code=language_code,
+        ),
+        "nutrition_history": get_nutrition_history(user_id, user_data=user_data),
         "available_modes": _mode_options(language_code),
         "locale": locale_payload(language_code),
+    }
+
+
+def _nutrition_state_payload(user: dict) -> dict[str, Any]:
+    user_id = user["id"]
+    language_code = user.get("language_code") or "en"
+    user_data = load_user_data_new(user_id)
+    history = get_nutrition_history(user_id, user_data=user_data)
+    return {
+        "settings": get_user_settings(user_id, user_data=user_data, user=user),
+        "stats": get_statistics_bundle(
+            user_id,
+            user_data=user_data,
+            language_code=language_code,
+        ),
+        "nutrition_history": history,
     }
 
 
@@ -340,9 +362,10 @@ async def api_history(request: Request):
 @app.get("/api/nutrition-history")
 async def api_nutrition_history(request: Request):
     user = _require_user(request)
+    state = _nutrition_state_payload(user)
     return {
-        "history": get_nutrition_history(user["id"]),
-        "stats": get_statistics_bundle(user["id"]),
+        "history": state["nutrition_history"],
+        "stats": state["stats"],
     }
 
 
@@ -360,14 +383,13 @@ async def api_message(request: Request, payload: SendMessageRequest):
         )
     except ValueError as exc:
         raise _structured_food_error(exc) from exc
+    state = _nutrition_state_payload(user)
     return {
         "reply_text": result["reply_text"],
         "messages": result["history"],
         "items": result["items"],
         "saved": result["saved"],
-        "settings": get_user_settings(user["id"]),
-        "stats": get_statistics_bundle(user["id"]),
-        "nutrition_history": get_nutrition_history(user["id"]),
+        **state,
     }
 
 
@@ -385,14 +407,13 @@ async def api_analyze_text(request: Request, payload: AnalyzeTextRequest):
         )
     except ValueError as exc:
         raise _structured_food_error(exc) from exc
+    state = _nutrition_state_payload(user)
     return {
         "reply_text": result["reply_text"],
         "messages": result["history"],
         "items": result["items"],
         "saved": result["saved"],
-        "settings": get_user_settings(user["id"]),
-        "stats": get_statistics_bundle(user["id"]),
-        "nutrition_history": get_nutrition_history(user["id"]),
+        **state,
     }
 
 
@@ -403,12 +424,11 @@ async def api_save_meal(request: Request, payload: SaveMealRequest):
         raise HTTPException(status_code=400, detail="Items are required")
 
     saved = save_meal(user["id"], payload.items, date_str=payload.date)
+    state = _nutrition_state_payload(user)
     return {
         "saved": saved,
-        "history": get_nutrition_history(user["id"]),
-        "settings": get_user_settings(user["id"]),
-        "stats": get_statistics_bundle(user["id"]),
-        "nutrition_history": get_nutrition_history(user["id"]),
+        "history": state["nutrition_history"],
+        **state,
     }
 
 
@@ -540,9 +560,10 @@ async def api_settings_assistant_name(request: Request, payload: AssistantNameRe
 async def api_delete_meal(request: Request, date_key: str, meal_number: int):
     user = _require_user(request)
     delete_meal(user["id"], date_key, meal_number)
+    state = _nutrition_state_payload(user)
     return {
-        "history": get_nutrition_history(user["id"]),
-        "stats": get_statistics_bundle(user["id"]),
+        "history": state["nutrition_history"],
+        "stats": state["stats"],
     }
 
 
@@ -553,9 +574,10 @@ async def api_delete_item(request: Request, date_key: str, meal_number: int, ite
         delete_item(user["id"], date_key, meal_number, item_index)
     except IndexError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    state = _nutrition_state_payload(user)
     return {
-        "history": get_nutrition_history(user["id"]),
-        "stats": get_statistics_bundle(user["id"]),
+        "history": state["nutrition_history"],
+        "stats": state["stats"],
     }
 
 

@@ -1,6 +1,6 @@
 from bot.app_services import analyze_food_text, analyze_online, save_meal
 from bot.config import ASSISTANT_CONTEXT_DIALOGS
-from bot.db import add_message, get_messages, get_recent_context
+from bot.db import add_exchange, get_messages, get_recent_context
 
 
 def _build_contextual_input(
@@ -46,13 +46,7 @@ async def process_text_interaction(
     # messages makes smaller models copy old products into the current result.
     result = await analyze_food_text(user_id, user_text)
 
-    add_message(user_id, role="user", content=user_text, source=source)
-    add_message(
-        user_id,
-        role="assistant",
-        content=result["display_text"],
-        source=source,
-    )
+    add_exchange(user_id, user_text, result["display_text"], source)
 
     saved = None
     if auto_save_meal and result.get("items"):
@@ -75,8 +69,7 @@ async def process_online_interaction(user_id: str, user_text: str, source: str) 
     )
     result = await analyze_online(user_id, contextual_input)
 
-    add_message(user_id, role="user", content=user_text, source=source)
-    add_message(user_id, role="assistant", content=result["text"], source=source)
+    add_exchange(user_id, user_text, result["text"], source)
 
     return {
         "reply_text": result["text"],
@@ -85,8 +78,7 @@ async def process_online_interaction(user_id: str, user_text: str, source: str) 
 
 
 def log_exchange(user_id: str, user_text: str, assistant_text: str, source: str) -> None:
-    add_message(user_id, role="user", content=user_text, source=source)
-    add_message(user_id, role="assistant", content=assistant_text, source=source)
+    add_exchange(user_id, user_text, assistant_text, source)
 
 
 def get_chat_history(user_id: str) -> list[dict]:

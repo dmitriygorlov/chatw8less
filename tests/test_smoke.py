@@ -541,6 +541,82 @@ def test_food_analysis_retries_suspicious_all_zero_nutrition(isolated_env, monke
     assert calls[1][1]["max_tokens"] == 4096
 
 
+def test_food_analysis_does_not_double_count_explicit_per_100g_value(
+    isolated_env,
+    monkeypatch,
+):
+    create_user(user_id="jelly_user", phrase="jelly phrase")
+    seen_prompts = []
+
+    class FakeCall:
+        type = "function_call"
+        name = "log_nutrition_data"
+        status = "completed"
+        arguments = json.dumps(
+            {
+                "intro_message": "Расчёт",
+                "items": [
+                    {
+                        "name": "Желе клубника без сахара",
+                        "amount_grams": 125,
+                        "calories": 8.75,
+                        "protein": 0,
+                        "fat": 0,
+                        "carbs": 0,
+                    },
+                    {
+                        "name": "Калорийность на 100 г",
+                        "amount_grams": 100,
+                        "calories": 7,
+                        "protein": 0,
+                        "fat": 0,
+                        "carbs": 0,
+                    },
+                ],
+                "fun_addition": "",
+            },
+            ensure_ascii=False,
+        )
+
+    class FakeResponse:
+        usage = None
+        status = "completed"
+        output = [FakeCall()]
+
+    async def fake_get_openai_response(*args, **kwargs):
+        seen_prompts.append(kwargs["system_prompt"])
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        app_services,
+        "get_user_model_config",
+        lambda user_id: (
+            "fast",
+            {
+                "model": "gpt-5-nano",
+                "vision_model": "gpt-5-nano",
+                "max_tokens": 2048,
+                "reasoning_effort": "minimal",
+            },
+        ),
+    )
+    monkeypatch.setattr(app_services, "get_openai_response", fake_get_openai_response)
+
+    result = asyncio.run(
+        app_services.analyze_food_text(
+            "jelly_user",
+            "Желе клубника из лавки без сахара 125 г 7 килокалорий на 100 г",
+        )
+    )
+
+    assert len(result["items"]) == 1
+    assert result["items"][0]["amount_grams"] == 125
+    assert result["items"][0]["calories"] == 8.75
+    assert "Калорийность на 100 г" not in result["display_text"]
+    assert "15.8" not in result["display_text"]
+    assert "never as a separate food item" in seen_prompts[0]
+
+
 def test_reasoning_effort_none_aliases_to_minimal(monkeypatch):
     monkeypatch.setenv("GPT_REASONING_FAST", "none")
     assert config._reasoning_effort_from_env("GPT_REASONING_FAST") == "minimal"

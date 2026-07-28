@@ -17,6 +17,7 @@ MAX_ASSISTANT_NAME_LENGTH = 40
 
 
 DB_LOCK = threading.RLock()
+INITIALIZED_DB_PATHS: set[str] = set()
 
 
 def _utcnow() -> datetime:
@@ -46,8 +47,13 @@ def get_connection():
 
 
 def init_db() -> None:
-    with get_connection() as conn:
-        conn.executescript(
+    database_path = str(Path(DATABASE_PATH).resolve())
+    with DB_LOCK:
+        if database_path in INITIALIZED_DB_PATHS:
+            return
+
+        with get_connection() as conn:
+            conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
@@ -108,26 +114,28 @@ def init_db() -> None:
                 ON web_sessions(expires_at);
             """
         )
-        columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(users)").fetchall()
-        }
-        if "language_code" not in columns:
-            conn.execute(
-                "ALTER TABLE users ADD COLUMN language_code TEXT NOT NULL DEFAULT 'ru'"
-            )
-            conn.execute(
-                "UPDATE users SET language_code = ? WHERE language_code IS NULL OR language_code = ''",
-                (EXISTING_USER_DEFAULT_LANGUAGE,),
-            )
-        if "assistant_name" not in columns:
-            conn.execute(
-                "ALTER TABLE users ADD COLUMN assistant_name TEXT NOT NULL DEFAULT 'Alex'"
-            )
-            conn.execute(
-                "UPDATE users SET assistant_name = ? WHERE assistant_name IS NULL OR assistant_name = ''",
-                (DEFAULT_ASSISTANT_NAME,),
-            )
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(users)").fetchall()
+            }
+            if "language_code" not in columns:
+                conn.execute(
+                    "ALTER TABLE users ADD COLUMN language_code TEXT NOT NULL DEFAULT 'ru'"
+                )
+                conn.execute(
+                    "UPDATE users SET language_code = ? WHERE language_code IS NULL OR language_code = ''",
+                    (EXISTING_USER_DEFAULT_LANGUAGE,),
+                )
+            if "assistant_name" not in columns:
+                conn.execute(
+                    "ALTER TABLE users ADD COLUMN assistant_name TEXT NOT NULL DEFAULT 'Alex'"
+                )
+                conn.execute(
+                    "UPDATE users SET assistant_name = ? WHERE assistant_name IS NULL OR assistant_name = ''",
+                    (DEFAULT_ASSISTANT_NAME,),
+                )
+
+        INITIALIZED_DB_PATHS.add(database_path)
 
 
 def _row_to_dict(row):
@@ -392,10 +400,29 @@ def add_message(user_id: str, role: str, content: str, source: str) -> None:
         )
 
 
+def add_exchange(user_id: str, user_text: str, assistant_text: str, source: str) -> None:
+    """Store both sides of an exchange in one SQLite transaction."""
+    init_db()
+    ensure_user(user_id)
+    with get_connection() as conn:
+        conversation_id = ensure_primary_conversation(user_id, conn=conn)
+        now = _utcnow_str()
+        conn.executemany(
+            """
+            INSERT INTO messages (user_id, conversation_id, role, source, content, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (user_id, conversation_id, "user", source, user_text, now),
+                (user_id, conversation_id, "assistant", source, assistant_text, now),
+            ],
+        )
+
+
 def get_messages(user_id: str, limit: int = 200, source: str | None = None) -> list[dict]:
     init_db()
-    conversation_id = ensure_primary_conversation(user_id)
     with get_connection() as conn:
+        conversation_id = ensure_primary_conversation(user_id, conn=conn)
         if source:
             rows = conn.execute(
                 """
@@ -506,17 +533,14 @@ def delete_web_session(raw_token: str) -> None:
 
 def load_user_state(user_id: str) -> dict:
     init_db()
-    user = get_user(user_id)
-    if user is None:
-        return {}
-
-    data: dict = {}
-    if user.get("daily_limit") is not None:
-        data["daily_limit"] = user["daily_limit"]
-    if user.get("model_mode"):
-        data["model_mode"] = user["model_mode"]
-
     with get_connection() as conn:
+        user_row = conn.execute(
+            "SELECT daily_limit, model_mode FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if user_row is None:
+            return {}
+
         rows = conn.execute(
             """
             SELECT date_key, payload_json
@@ -526,6 +550,12 @@ def load_user_state(user_id: str) -> dict:
             """,
             (user_id,),
         ).fetchall()
+
+    data: dict = {}
+    if user_row["daily_limit"] is not None:
+        data["daily_limit"] = user_row["daily_limit"]
+    if user_row["model_mode"]:
+        data["model_mode"] = user_row["model_mode"]
 
     for row in rows:
         data[row["date_key"]] = json.loads(row["payload_json"])

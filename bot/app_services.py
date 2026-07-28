@@ -8,10 +8,12 @@ from typing import Any
 from zipfile import BadZipFile, ZipFile
 
 from bot.config import (
+    DEFAULT_MODEL_MODE,
     GPT_MODEL_ASSISTANT,
     GPT_REASONING_ASSISTANT,
     HOUR_SHIFT,
     MAX_TOKENS_ASSISTANT,
+    MODEL_MODES,
     TOKENS_LOG_FILE,
 )
 from bot.db import (
@@ -61,7 +63,68 @@ def current_date_str() -> str:
     return shifted_now().strftime("%Y-%m-%d")
 
 
-def _parse_nutrition_payload(response: Any, user_id: str, language_code: str) -> dict[str, Any]:
+NUTRITION_INPUT_RULES = """
+Treat nutrition values such as "7 kcal per 100 g" or "7 ккал на 100 г" as
+metadata for the immediately preceding food, never as a separate food item.
+If the user gives both an amount and calories per 100 g, calculate that food's
+calories as amount_grams * calories_per_100g / 100. Do not add the per-100-g
+reference value to the total a second time. Explicit values supplied by the
+user take precedence over estimates.
+""".strip()
+
+EXPLICIT_ENERGY_PATTERN = re.compile(
+    r"(?P<amount>\d+(?:[.,]\d+)?)\s*"
+    r"(?:г(?:рамм(?:а|ов)?)?|гр|g(?:rams?)?)\b"
+    r"[\s\S]{0,120}?"
+    r"(?P<density>\d+(?:[.,]\d+)?)\s*"
+    r"(?:ккал|килокалори(?:я|и|й)|kcal|calories?)\s*"
+    r"(?:на|per|/)\s*100\s*"
+    r"(?:г(?:рамм(?:а|ов)?)?|гр|g(?:rams?)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_nutrition_metadata_item(item: dict[str, Any]) -> bool:
+    name = re.sub(r"\s+", "", str(item.get("name", "")).lower())
+    describes_energy = any(
+        marker in name
+        for marker in ("калори", "ккал", "kilocal", "calorie", "kcal")
+    )
+    describes_reference_amount = any(
+        marker in name
+        for marker in ("на100", "per100", "/100", "100г", "100g")
+    )
+    return describes_energy and describes_reference_amount
+
+
+def _apply_explicit_energy_metadata(
+    source_text: str,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    match = EXPLICIT_ENERGY_PATTERN.search(source_text or "")
+    if not match:
+        return items
+
+    food_items = [item for item in items if not _is_nutrition_metadata_item(item)]
+    if food_items:
+        items = food_items
+
+    # A single explicit food amount plus a per-100-g value is deterministic.
+    # Correct it even if a model estimated or double-counted the calories.
+    if len(items) == 1:
+        amount = float(match.group("amount").replace(",", "."))
+        density = float(match.group("density").replace(",", "."))
+        items[0]["amount_grams"] = amount
+        items[0]["calories"] = round(amount * density / 100, 2)
+    return items
+
+
+def _parse_nutrition_payload(
+    response: Any,
+    user_id: str,
+    language_code: str,
+    source_text: str = "",
+) -> dict[str, Any]:
     payload, _, _ = extract_function_call_payload(response)
 
     if isinstance(payload, str):
@@ -75,6 +138,7 @@ def _parse_nutrition_payload(response: Any, user_id: str, language_code: str) ->
         raise ValueError("Parsed nutrition payload is not an object")
 
     items = sanitize_items(parsed.get("items", []))
+    items = _apply_explicit_energy_metadata(source_text, items)
     parsed["items"] = items
     parsed["formatted_items"] = format_log_food_data({"items": items}, language_code)
     parsed["display_text"] = "\n\n".join(
@@ -113,6 +177,7 @@ async def analyze_food_text(user_id: str, text: str) -> dict[str, Any]:
         "prompt.food",
         language_name=language_name(language_code),
     )
+    system_prompt = f"{system_prompt}\n\n{NUTRITION_INPUT_RULES}"
     response = await get_openai_response(
         text,
         function_name="log_nutrition_data",
@@ -123,7 +188,12 @@ async def analyze_food_text(user_id: str, text: str) -> dict[str, Any]:
     )
     retry_reason = None
     try:
-        parsed = _parse_nutrition_payload(response, user_id, language_code)
+        parsed = _parse_nutrition_payload(
+            response,
+            user_id,
+            language_code,
+            source_text=text,
+        )
         if _has_suspicious_zero_nutrition(parsed):
             retry_reason = "all nutrition values are zero for items with positive weight"
     except (TypeError, ValueError) as exc:
@@ -152,7 +222,12 @@ async def analyze_food_text(user_id: str, text: str) -> dict[str, Any]:
             max_tokens=retry_max_tokens,
             reasoning_effort=model_config.get("reasoning_effort"),
         )
-        parsed = _parse_nutrition_payload(response, user_id, language_code)
+        parsed = _parse_nutrition_payload(
+            response,
+            user_id,
+            language_code,
+            source_text=text,
+        )
 
     log_token_usage(
         response.usage,
@@ -292,17 +367,31 @@ def save_meal(user_id: str, items: list[dict[str, Any]], date_str: str | None = 
     return {"date": target_date, "meal_number": next_meal_number, "items": normalized_items}
 
 
-def get_user_settings(user_id: str) -> dict[str, Any]:
-    mode, model_config = get_user_model_config(user_id)
-    user_data = load_user_data_new(user_id)
-    language_code = get_user_language(user_id)
+def get_user_settings(
+    user_id: str,
+    user_data: dict[str, Any] | None = None,
+    user: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    user_data = user_data if user_data is not None else load_user_data_new(user_id)
+    mode = user_data.get("model_mode", DEFAULT_MODEL_MODE)
+    if mode not in MODEL_MODES:
+        mode = DEFAULT_MODEL_MODE
+    language_code = (
+        user.get("language_code")
+        if user
+        else get_user_language(user_id)
+    ) or DEFAULT_LANGUAGE
     return {
         "user_id": user_id,
         "daily_limit": user_data.get("daily_limit"),
         "mode": mode,
         "model_label": t(language_code, f"mode.{mode}"),
         "language_code": language_code,
-        "assistant_name": get_user_assistant_name(user_id),
+        "assistant_name": (
+            user.get("assistant_name")
+            if user
+            else get_user_assistant_name(user_id)
+        ),
     }
 
 
@@ -395,8 +484,11 @@ def get_statistics_bundle(user_id: str) -> dict[str, str]:
     }
 
 
-def get_history(user_id: str) -> list[dict[str, Any]]:
-    user_data = load_user_data_new(user_id)
+def get_history(
+    user_id: str,
+    user_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    user_data = user_data if user_data is not None else load_user_data_new(user_id)
     history: list[dict[str, Any]] = []
 
     for date_key in sorted(
@@ -477,9 +569,13 @@ def validate_limit(value: Any) -> int | None:
     return limit
 
 
-def get_statistics_bundle(user_id: str) -> dict[str, str]:
-    user_data = load_user_data_new(user_id)
-    language_code = get_user_language(user_id)
+def get_statistics_bundle(
+    user_id: str,
+    user_data: dict[str, Any] | None = None,
+    language_code: str | None = None,
+) -> dict[str, str]:
+    user_data = user_data if user_data is not None else load_user_data_new(user_id)
+    language_code = language_code or get_user_language(user_id)
     today = current_date_str()
     yesterday = (shifted_now().date() - timedelta(days=1)).strftime("%Y-%m-%d")
     return {
