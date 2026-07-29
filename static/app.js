@@ -293,23 +293,8 @@ function renderMessageContent(message) {
     return escapeHtml(message.content).replaceAll("\n", "<br>");
 }
 
-function nutritionFocuses() {
-    const focuses = state.bootstrap?.settings?.nutrition_focuses;
-    return Array.isArray(focuses) && focuses.length ? focuses : ["calories"];
-}
-
 function formatMacroLine(total) {
-    const parts = [];
-    nutritionFocuses().forEach((focus) => {
-        if (focus === "calories") {
-            parts.push(`${total.calories} ${t("common.calories")}`);
-        } else if (focus === "protein") {
-            parts.push(`${t("common.protein_short")} ${total.protein} ${t("common.grams")}`);
-        } else if (focus === "carbs") {
-            parts.push(`${t("common.carbs_short")} ${total.carbs} ${t("common.grams")}`);
-        }
-    });
-    return parts.join(" · ");
+    return `${total.calories} ${t("common.calories")} · ${t("common.protein_short")} ${total.protein} ${t("common.grams")} · ${t("common.fat_short")} ${total.fat} ${t("common.grams")} · ${t("common.carbs_short")} ${total.carbs} ${t("common.grams")}`;
 }
 
 function isMobileLayout() {

@@ -145,7 +145,6 @@ def _parse_nutrition_payload(
     parsed["formatted_items"] = format_log_food_data(
         {"items": items},
         language_code,
-        focuses=get_user_nutrition_focuses(user_id),
     )
     parsed["display_text"] = "\n\n".join(
         part

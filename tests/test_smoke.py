@@ -768,7 +768,9 @@ def test_telegram_commands_are_localized():
     assert "limits" not in descriptions
 
 
-def test_nutrition_focuses_filter_food_and_statistics_output(isolated_env):
+def test_nutrition_goals_keep_full_output_and_filter_only_target_progress(
+    isolated_env,
+):
     items = [
         {
             "name": "meal",
@@ -780,6 +782,7 @@ def test_nutrition_focuses_filter_food_and_statistics_output(isolated_env):
         }
     ]
     user_data = {
+        "daily_limit": 200,
         "protein_target": 15,
         "carbs_limit": 25,
         "2026-07-29": {"1": items},
@@ -788,7 +791,6 @@ def test_nutrition_focuses_filter_food_and_statistics_output(isolated_env):
     food_text = utils.format_log_food_data(
         {"items": items},
         "en",
-        focuses=["protein", "carbs"],
     )
     stats_text = utils.format_day_statistics(
         user_data,
@@ -798,15 +800,17 @@ def test_nutrition_focuses_filter_food_and_statistics_output(isolated_env):
         ["protein", "carbs"],
     )
 
+    assert "180 kcal" in food_text
     assert "P 10 g" in food_text
+    assert "F 6 g" in food_text
     assert "C 20 g" in food_text
-    assert "180 kcal" not in food_text
-    assert "F 6 g" not in food_text
+    assert "Calories: 180 kcal" in stats_text
     assert "Protein: 10 g" in stats_text
+    assert "F: 6 g" in stats_text
     assert "Carbohydrates: 20 g" in stats_text
     assert "Protein remaining to goal: 5 g" in stats_text
     assert "Carbohydrates remaining: 5 g" in stats_text
-    assert "Calories:" not in stats_text
+    assert "Calorie deficit" not in stats_text
 
 
 def test_telegram_goals_show_selected_targets(isolated_env):
