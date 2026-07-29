@@ -622,9 +622,25 @@ function renderSettings(bootstrap) {
     if (calorieLimitSettings) {
         calorieLimitSettings.classList.toggle("hidden", !focuses.has("calories"));
     }
+    const proteinTargetSettings = $("protein-target-settings");
+    if (proteinTargetSettings) {
+        proteinTargetSettings.classList.toggle("hidden", !focuses.has("protein"));
+    }
+    const carbsLimitSettings = $("carbs-limit-settings");
+    if (carbsLimitSettings) {
+        carbsLimitSettings.classList.toggle("hidden", !focuses.has("carbs"));
+    }
     const input = $("daily-limit-input");
     if (input) {
         input.value = bootstrap.settings.daily_limit || "";
+    }
+    const proteinTargetInput = $("protein-target-input");
+    if (proteinTargetInput) {
+        proteinTargetInput.value = bootstrap.settings.protein_target || "";
+    }
+    const carbsLimitInput = $("carbs-limit-input");
+    if (carbsLimitInput) {
+        carbsLimitInput.value = bootstrap.settings.carbs_limit || "";
     }
     const assistantNameInput = $("assistant-name-input");
     if (assistantNameInput) {
@@ -885,6 +901,25 @@ async function saveNutritionFocuses() {
     }
     renderStats(response.stats);
     showToast(t("web.focuses_saved"));
+}
+
+async function saveNutritionTargets() {
+    const proteinRaw = $("protein-target-input").value.trim();
+    const carbsRaw = $("carbs-limit-input").value.trim();
+    const response = await apiFetch("/api/settings/nutrition-targets", {
+        method: "POST",
+        body: JSON.stringify({
+            protein_target: proteinRaw === "" ? null : Number(proteinRaw),
+            carbs_limit: carbsRaw === "" ? null : Number(carbsRaw),
+        }),
+    });
+    if (state.bootstrap) {
+        state.bootstrap.settings = response.settings;
+        state.bootstrap.stats = response.stats;
+        renderSettings(state.bootstrap);
+    }
+    renderStats(response.stats);
+    showToast(t("web.targets_saved"));
 }
 
 async function setMode(mode) {
@@ -1177,6 +1212,40 @@ function bindEvents() {
         $("daily-limit-input").value = "";
         try {
             await saveLimit();
+        } catch (error) {
+            showToast(error.message || t("common.error"));
+        }
+    });
+
+    $("save-protein-target-button").addEventListener("click", async () => {
+        try {
+            await saveNutritionTargets();
+        } catch (error) {
+            showToast(error.message || t("common.error"));
+        }
+    });
+
+    $("clear-protein-target-button").addEventListener("click", async () => {
+        $("protein-target-input").value = "";
+        try {
+            await saveNutritionTargets();
+        } catch (error) {
+            showToast(error.message || t("common.error"));
+        }
+    });
+
+    $("save-carbs-limit-button").addEventListener("click", async () => {
+        try {
+            await saveNutritionTargets();
+        } catch (error) {
+            showToast(error.message || t("common.error"));
+        }
+    });
+
+    $("clear-carbs-limit-button").addEventListener("click", async () => {
+        $("carbs-limit-input").value = "";
+        try {
+            await saveNutritionTargets();
         } catch (error) {
             showToast(error.message || t("common.error"));
         }

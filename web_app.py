@@ -29,7 +29,9 @@ from bot.app_services import (
     set_daily_limit,
     set_model_mode,
     set_nutrition_focuses,
+    set_nutrition_targets,
     validate_limit,
+    validate_nutrition_target,
 )
 from bot.chat_service import (
     get_chat_history,
@@ -166,6 +168,11 @@ class AssistantNameRequest(BaseModel):
 
 class NutritionFocusesRequest(BaseModel):
     focuses: list[str]
+
+
+class NutritionTargetsRequest(BaseModel):
+    protein_target: float | str | None = None
+    carbs_limit: float | str | None = None
 
 
 class TextActionRequest(BaseModel):
@@ -529,6 +536,28 @@ async def api_settings_nutrition_focuses(
         settings = set_nutrition_focuses(user["id"], payload.focuses)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "settings": settings,
+        "stats": get_statistics_bundle(user["id"]),
+    }
+
+
+@app.post("/api/settings/nutrition-targets")
+async def api_settings_nutrition_targets(
+    request: Request,
+    payload: NutritionTargetsRequest,
+):
+    user = _require_user(request)
+    try:
+        protein_target = validate_nutrition_target(payload.protein_target)
+        carbs_limit = validate_nutrition_target(payload.carbs_limit)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    settings = set_nutrition_targets(
+        user["id"],
+        protein_target=protein_target,
+        carbs_limit=carbs_limit,
+    )
     return {
         "settings": settings,
         "stats": get_statistics_bundle(user["id"]),

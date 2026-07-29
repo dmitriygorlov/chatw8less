@@ -649,6 +649,20 @@ def test_web_settings_endpoints_update_limit_and_mode(isolated_env):
         )
         assert invalid_focuses_response.status_code == 400
 
+        targets_response = client.post(
+            "/api/settings/nutrition-targets",
+            json={"protein_target": 95, "carbs_limit": 180.5},
+        )
+        assert targets_response.status_code == 200
+        assert targets_response.json()["settings"]["protein_target"] == 95
+        assert targets_response.json()["settings"]["carbs_limit"] == 180.5
+
+        invalid_targets_response = client.post(
+            "/api/settings/nutrition-targets",
+            json={"protein_target": 0, "carbs_limit": 180},
+        )
+        assert invalid_targets_response.status_code == 400
+
         mode_response = client.post("/api/settings/mode", json={"mode": "smart"})
         assert mode_response.status_code == 200
         assert mode_response.json()["settings"]["mode"] == "smart"
@@ -719,6 +733,8 @@ def test_existing_users_receive_russian_language_on_db_migration(tmp_path, monke
     assert db.get_user("legacy")["language_code"] == "ru"
     assert db.get_user("legacy")["assistant_name"] == "Alex"
     assert db.get_user_nutrition_focuses("legacy") == ["calories"]
+    assert db.get_user("legacy")["protein_target"] is None
+    assert db.get_user("legacy")["carbs_limit"] is None
 
 
 def test_new_telegram_user_uses_account_language_or_english(isolated_env):
@@ -763,7 +779,11 @@ def test_nutrition_focuses_filter_food_and_statistics_output(isolated_env):
             "carbs": 20,
         }
     ]
-    user_data = {"2026-07-29": {"1": items}}
+    user_data = {
+        "protein_target": 15,
+        "carbs_limit": 25,
+        "2026-07-29": {"1": items},
+    }
 
     food_text = utils.format_log_food_data(
         {"items": items},
@@ -784,7 +804,34 @@ def test_nutrition_focuses_filter_food_and_statistics_output(isolated_env):
     assert "F 6 g" not in food_text
     assert "Protein: 10 g" in stats_text
     assert "Carbohydrates: 20 g" in stats_text
+    assert "Protein remaining to goal: 5 g" in stats_text
+    assert "Carbohydrates remaining: 5 g" in stats_text
     assert "Calories:" not in stats_text
+
+
+def test_telegram_goals_show_selected_targets(isolated_env):
+    text = handlers.nutrition_goals_text(
+        "en",
+        ["protein", "carbs"],
+        {"protein_target": 100, "carbs_limit": 175},
+    )
+    keyboard = handlers.nutrition_goals_keyboard(
+        "en",
+        ["protein", "carbs"],
+        {"protein_target": 100, "carbs_limit": 175},
+    )
+    callback_data = [
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert "Protein: 100 g" in text
+    assert "Carbohydrates: 175 g" in text
+    assert "goals:target:protein" in callback_data
+    assert "goals:target:carbs" in callback_data
+    assert "goals:target:calories" not in callback_data
+    assert "goals:progress:view" in callback_data
 
 
 def test_language_endpoint_can_generate_new_locale(isolated_env, monkeypatch):

@@ -693,40 +693,52 @@ async def goals_menu_callback(callback: types.CallbackQuery, state: FSMContext):
             )
 
         await callback.message.edit_text(
-            nutrition_goals_text(language_code, updated),
-            reply_markup=nutrition_goals_keyboard(language_code, updated),
+            nutrition_goals_text(language_code, updated, user_data),
+            reply_markup=nutrition_goals_keyboard(
+                language_code,
+                updated,
+                user_data,
+            ),
         )
         await callback.answer(t(language_code, "telegram.goals.saved"))
         return
 
-    if callback.data == "goals:limit:set":
+    if callback.data.startswith("goals:target:"):
+        metric = callback.data.rsplit(":", maxsplit=1)[-1]
+        if metric not in {"calories", "protein", "carbs"}:
+            return await callback.answer(
+                t(language_code, "telegram.error.generic"),
+                show_alert=True,
+            )
+        unit = (
+            t(language_code, "common.calories")
+            if metric == "calories"
+            else t(language_code, "common.grams")
+        )
         await callback.answer()
-        await callback.message.answer(t(language_code, "telegram.goals.set_limit_prompt"))
+        await state.update_data(goal_metric=metric)
+        await callback.message.answer(
+            t(
+                language_code,
+                "telegram.goals.target_prompt",
+                focus=t(language_code, f"nutrition_focus.{metric}"),
+                unit=unit,
+            )
+        )
         await state.set_state(LimitDataState.waiting_for_limit_value)
-    elif callback.data == "goals:limit:view":
+    elif callback.data == "goals:progress:view":
         await callback.answer()
         today = (datetime.now() + timedelta(hours=HOUR_SHIFT)).strftime("%Y-%m-%d")
-        today_data = user_data.get(today, {})
-        total_consumed = (
-            sum(item["calories"] for meal in today_data.values() for item in meal)
-            if today_data
-            else 0
-        )
-        limit = user_data.get("daily_limit")
-        if limit:
-            remaining = limit - total_consumed
-            await callback.message.answer(
-                t(
-                    language_code,
-                    "telegram.goals.view_limit_result",
-                    date=today,
-                    limit=limit,
-                    consumed=total_consumed,
-                    remaining=remaining,
-                )
+        focuses = get_user_nutrition_focuses(user_id)
+        await callback.message.answer(
+            format_day_statistics(
+                user_data,
+                today,
+                f"📅 {t(language_code, 'stats.today')}",
+                language_code,
+                focuses,
             )
-        else:
-            await callback.message.answer(t(language_code, "telegram.goals.view_limit_empty"))
+        )
         await state.clear()
     await callback.message.edit_reply_markup(reply_markup=None)
 

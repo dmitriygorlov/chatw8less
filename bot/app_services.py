@@ -390,6 +390,8 @@ def get_user_settings(
     return {
         "user_id": user_id,
         "daily_limit": user_data.get("daily_limit"),
+        "protein_target": user_data.get("protein_target"),
+        "carbs_limit": user_data.get("carbs_limit"),
         "mode": mode,
         "model_label": t(language_code, f"mode.{mode}"),
         "language_code": language_code,
@@ -426,6 +428,24 @@ def set_language(user_id: str, language_code: str) -> dict[str, Any]:
 
 def set_assistant_name(user_id: str, assistant_name: str) -> dict[str, Any]:
     persist_user_assistant_name(user_id, assistant_name)
+    return get_user_settings(user_id)
+
+
+def set_nutrition_targets(
+    user_id: str,
+    protein_target: float | None,
+    carbs_limit: float | None,
+) -> dict[str, Any]:
+    user_data = load_user_data_new(user_id)
+    for key, value in (
+        ("protein_target", protein_target),
+        ("carbs_limit", carbs_limit),
+    ):
+        if value is None:
+            user_data.pop(key, None)
+        else:
+            user_data[key] = value
+    save_user_data_new(user_id, user_data)
     return get_user_settings(user_id)
 
 
@@ -504,7 +524,18 @@ def get_history(
     history: list[dict[str, Any]] = []
 
     for date_key in sorted(
-        [key for key in user_data.keys() if key not in {"daily_limit", "model_mode", "language_code"}],
+        [
+            key
+            for key in user_data.keys()
+            if key
+            not in {
+                "daily_limit",
+                "protein_target",
+                "carbs_limit",
+                "model_mode",
+                "language_code",
+            }
+        ],
         reverse=True,
     ):
         day_data = user_data.get(date_key, {})
@@ -579,6 +610,19 @@ def validate_limit(value: Any) -> int | None:
     if limit <= 0:
         raise ValueError("Daily limit must be positive")
     return limit
+
+
+def validate_nutrition_target(value: Any) -> float | int | None:
+    if value in ("", None):
+        return None
+    if isinstance(value, str):
+        value = value.strip().replace(",", ".")
+        if not value:
+            return None
+    target = float(value)
+    if target <= 0:
+        raise ValueError("Nutrition target must be positive")
+    return int(target) if target.is_integer() else round(target, 1)
 
 
 def get_statistics_bundle(

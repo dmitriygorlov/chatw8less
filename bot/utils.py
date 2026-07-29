@@ -16,7 +16,13 @@ from bot.db import NUTRITION_FOCUS_KEYS, load_user_state, save_user_state
 from bot.i18n import t
 
 
-META_KEYS = {"daily_limit", "model_mode", "language_code"}
+META_KEYS = {
+    "daily_limit",
+    "protein_target",
+    "carbs_limit",
+    "model_mode",
+    "language_code",
+}
 
 
 def _iter_day_entries(user_data):
@@ -678,6 +684,49 @@ def _focus_summary_lines(
     ]
 
 
+def _nutrition_target_progress_lines(
+    language_code: str | None,
+    protein_value: float,
+    carbs_value: float,
+    user_data: Mapping[str, Any],
+    focuses: list[str] | None,
+    days: int = 1,
+) -> list[str]:
+    fields = _display_nutrition_fields(focuses)
+    grams = t(language_code, "common.grams")
+    lines: list[str] = []
+
+    protein_target = user_data.get("protein_target")
+    if "protein" in fields and protein_target:
+        difference = protein_target * days - protein_value
+        if difference > 0:
+            lines.append(
+                f"🎯 {t(language_code, 'stats.protein_remaining')}: "
+                f"{round_stat(difference)} {grams}"
+            )
+        else:
+            lines.append(
+                f"✅ {t(language_code, 'stats.protein_achieved')}: "
+                f"{round_stat(abs(difference))} {grams}"
+            )
+
+    carbs_limit = user_data.get("carbs_limit")
+    if "carbs" in fields and carbs_limit:
+        difference = carbs_limit * days - carbs_value
+        if difference >= 0:
+            lines.append(
+                f"🎯 {t(language_code, 'stats.carbs_remaining')}: "
+                f"{round_stat(difference)} {grams}"
+            )
+        else:
+            lines.append(
+                f"⚠️ {t(language_code, 'stats.carbs_excess')}: "
+                f"{round_stat(abs(difference))} {grams}"
+            )
+
+    return lines
+
+
 def format_day_statistics(
     user_data,
     date_str,
@@ -731,6 +780,15 @@ def format_day_statistics(
             msg += f"🔥 {t(language_code, 'stats.limit_deficit')}: {round_stat(abs(deficit))} {t(language_code, 'common.calories')}\n"
         else:
             msg += f"⚠️ {t(language_code, 'stats.excess')}: {round_stat(deficit)} {t(language_code, 'common.calories')}\n"
+    progress_lines = _nutrition_target_progress_lines(
+        language_code,
+        total_protein,
+        total_carbs,
+        user_data,
+        focuses,
+    )
+    if progress_lines:
+        msg += "\n".join(progress_lines) + "\n"
     return msg.rstrip()
 
 
@@ -782,6 +840,16 @@ def format_all_statistics(
             msg += f"🔥 {t(language_code, 'stats.limit_deficit')}: {round_stat(abs(deficit))} {t(language_code, 'common.calories')}\n"
         else:
             msg += f"⚠️ {t(language_code, 'stats.excess')}: {round_stat(deficit)} {t(language_code, 'common.calories')}\n"
+    progress_lines = _nutrition_target_progress_lines(
+        language_code,
+        grand_total_protein,
+        grand_total_carbs,
+        user_data,
+        focuses,
+        days=days,
+    )
+    if progress_lines:
+        msg += "\n".join(progress_lines) + "\n"
     return msg.rstrip()
 
 
@@ -847,6 +915,16 @@ def format_last_7_days_statistics(
             msg += f"🔥 {t(language_code, 'stats.limit_deficit')}: {round_stat(abs(deficit))} {t(language_code, 'common.calories')}\n"
         else:
             msg += f"⚠️ {t(language_code, 'stats.excess')}: {round_stat(deficit)} {t(language_code, 'common.calories')}\n"
+    progress_lines = _nutrition_target_progress_lines(
+        language_code,
+        grand_total_protein,
+        grand_total_carbs,
+        user_data,
+        focuses,
+        days=total_days,
+    )
+    if progress_lines:
+        msg += "\n".join(progress_lines) + "\n"
     return msg.rstrip()
 
 

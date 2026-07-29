@@ -64,6 +64,8 @@ def init_db() -> None:
                 passphrase_salt TEXT,
                 passphrase_hash TEXT,
                 daily_limit INTEGER,
+                protein_target REAL,
+                carbs_limit REAL,
                 model_mode TEXT,
                 assistant_name TEXT NOT NULL DEFAULT 'Alex',
                 language_code TEXT NOT NULL DEFAULT 'ru',
@@ -142,6 +144,10 @@ def init_db() -> None:
                     """ALTER TABLE users
                     ADD COLUMN nutrition_focuses TEXT NOT NULL DEFAULT '["calories"]'"""
                 )
+            if "protein_target" not in columns:
+                conn.execute("ALTER TABLE users ADD COLUMN protein_target REAL")
+            if "carbs_limit" not in columns:
+                conn.execute("ALTER TABLE users ADD COLUMN carbs_limit REAL")
             conn.execute(
                 """UPDATE users
                 SET nutrition_focuses = ?
@@ -593,7 +599,8 @@ def load_user_state(user_id: str) -> dict:
     init_db()
     with get_connection() as conn:
         user_row = conn.execute(
-            "SELECT daily_limit, model_mode FROM users WHERE id = ?",
+            """SELECT daily_limit, protein_target, carbs_limit, model_mode
+            FROM users WHERE id = ?""",
             (user_id,),
         ).fetchone()
         if user_row is None:
@@ -612,6 +619,10 @@ def load_user_state(user_id: str) -> dict:
     data: dict = {}
     if user_row["daily_limit"] is not None:
         data["daily_limit"] = user_row["daily_limit"]
+    if user_row["protein_target"] is not None:
+        data["protein_target"] = user_row["protein_target"]
+    if user_row["carbs_limit"] is not None:
+        data["carbs_limit"] = user_row["carbs_limit"]
     if user_row["model_mode"]:
         data["model_mode"] = user_row["model_mode"]
 
@@ -624,21 +635,36 @@ def save_user_state(user_id: str, data: dict) -> None:
     init_db()
     ensure_user(user_id)
     meta_daily_limit = data.get("daily_limit")
+    meta_protein_target = data.get("protein_target")
+    meta_carbs_limit = data.get("carbs_limit")
     meta_model_mode = data.get("model_mode", DEFAULT_MODEL_MODE)
     day_items = {
         key: value
         for key, value in data.items()
-        if key not in {"daily_limit", "model_mode"} and value
+        if key not in {
+            "daily_limit",
+            "protein_target",
+            "carbs_limit",
+            "model_mode",
+        } and value
     }
 
     with get_connection() as conn:
         conn.execute(
             """
             UPDATE users
-            SET daily_limit = ?, model_mode = ?, updated_at = ?
+            SET daily_limit = ?, protein_target = ?, carbs_limit = ?,
+                model_mode = ?, updated_at = ?
             WHERE id = ?
             """,
-            (meta_daily_limit, meta_model_mode, _utcnow_str(), user_id),
+            (
+                meta_daily_limit,
+                meta_protein_target,
+                meta_carbs_limit,
+                meta_model_mode,
+                _utcnow_str(),
+                user_id,
+            ),
         )
         conn.execute("DELETE FROM nutrition_days WHERE user_id = ?", (user_id,))
         for date_key, payload in day_items.items():

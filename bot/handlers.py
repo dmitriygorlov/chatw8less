@@ -794,22 +794,63 @@ async def cmd_stats(message: types.Message):
     )
 
 
-def nutrition_goals_text(language_code: str, focuses: list[str]) -> str:
+def _format_target_value(value) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def nutrition_goals_text(
+    language_code: str,
+    focuses: list[str],
+    user_data: dict | None = None,
+) -> str:
+    user_data = user_data or {}
     labels = [
         t(language_code, f"nutrition_focus.{focus}")
         for focus in focuses
     ]
+    target_specs = {
+        "calories": ("daily_limit", t(language_code, "common.calories")),
+        "protein": ("protein_target", t(language_code, "common.grams")),
+        "carbs": ("carbs_limit", t(language_code, "common.grams")),
+    }
+    target_lines = []
+    for focus in focuses:
+        key, unit = target_specs[focus]
+        value = user_data.get(key)
+        if value:
+            target_lines.append(
+                t(
+                    language_code,
+                    "telegram.goals.target_value",
+                    focus=t(language_code, f"nutrition_focus.{focus}"),
+                    value=_format_target_value(value),
+                    unit=unit,
+                )
+            )
+        else:
+            target_lines.append(
+                t(
+                    language_code,
+                    "telegram.goals.target_empty",
+                    focus=t(language_code, f"nutrition_focus.{focus}"),
+                )
+            )
     return t(
         language_code,
         "telegram.goals.menu",
         focuses=", ".join(labels),
+        targets="\n".join(target_lines),
     )
 
 
 def nutrition_goals_keyboard(
     language_code: str,
     focuses: list[str],
+    user_data: dict | None = None,
 ) -> InlineKeyboardMarkup:
+    user_data = user_data or {}
     selected = set(focuses)
     buttons = [
         [
@@ -823,21 +864,33 @@ def nutrition_goals_keyboard(
         ]
         for focus in ("calories", "protein", "carbs")
     ]
-    if "calories" in selected:
-        buttons.extend(
+    target_buttons = {
+        "calories": "telegram.goals.set_calorie_limit",
+        "protein": "telegram.goals.set_protein_target",
+        "carbs": "telegram.goals.set_carbs_limit",
+    }
+    for focus in ("calories", "protein", "carbs"):
+        if focus in selected:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=t(language_code, target_buttons[focus]),
+                        callback_data=f"goals:target:{focus}",
+                    )
+                ]
+            )
+    target_keys = {
+        "calories": "daily_limit",
+        "protein": "protein_target",
+        "carbs": "carbs_limit",
+    }
+    if any(user_data.get(target_keys[focus]) for focus in selected):
+        buttons.append(
             [
-                [
-                    InlineKeyboardButton(
-                        text=t(language_code, "telegram.goals.set_limit"),
-                        callback_data="goals:limit:set",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=t(language_code, "telegram.goals.view_limit"),
-                        callback_data="goals:limit:view",
-                    )
-                ],
+                InlineKeyboardButton(
+                    text=t(language_code, "telegram.goals.view_progress"),
+                    callback_data="goals:progress:view",
+                )
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -845,27 +898,57 @@ def nutrition_goals_keyboard(
 
 async def goals_command(message: types.Message, state: FSMContext):
     language_code = _message_language(message)
-    focuses = get_user_nutrition_focuses(str(message.from_user.id))
+    user_id = str(message.from_user.id)
+    focuses = get_user_nutrition_focuses(user_id)
+    user_data = load_user_data_new(user_id)
     await message.reply(
-        nutrition_goals_text(language_code, focuses),
-        reply_markup=nutrition_goals_keyboard(language_code, focuses),
+        nutrition_goals_text(language_code, focuses, user_data),
+        reply_markup=nutrition_goals_keyboard(language_code, focuses, user_data),
     )
     await state.set_state(LimitDataState.waiting_for_action)
 
 
-async def goals_limit_value_handler(message: types.Message, state: FSMContext):
+async def goals_target_value_handler(message: types.Message, state: FSMContext):
     language_code = _message_language(message)
     user_id = str(message.from_user.id)
-    text = (message.text or "").strip()
-    if not text.isdigit():
+    text = (message.text or "").strip().replace(",", ".")
+    try:
+        value = float(text)
+    except ValueError:
         return await send_long_message(message, t(language_code, "telegram.limit.invalid"), method="reply")
-    limit = int(text)
+    if value <= 0:
+        return await send_long_message(message, t(language_code, "telegram.limit.invalid"), method="reply")
+    value = int(value) if value.is_integer() else round(value, 1)
+    state_data = await state.get_data()
+    metric = state_data.get("goal_metric")
+    target_keys = {
+        "calories": "daily_limit",
+        "protein": "protein_target",
+        "carbs": "carbs_limit",
+    }
+    if metric not in target_keys:
+        await state.clear()
+        return await send_long_message(
+            message,
+            t(language_code, "telegram.error.generic"),
+            method="reply",
+        )
     user_data = load_user_data_new(user_id)
-    user_data["daily_limit"] = limit
+    user_data[target_keys[metric]] = value
     save_user_data_new(user_id, user_data)
     await send_long_message(
         message,
-        t(language_code, "telegram.goals.limit_saved", limit=limit),
+        t(
+            language_code,
+            "telegram.goals.target_saved",
+            focus=t(language_code, f"nutrition_focus.{metric}"),
+            value=_format_target_value(value),
+            unit=(
+                t(language_code, "common.calories")
+                if metric == "calories"
+                else t(language_code, "common.grams")
+            ),
+        ),
         method="reply",
     )
     await state.clear()

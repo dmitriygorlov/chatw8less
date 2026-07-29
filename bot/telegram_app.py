@@ -127,7 +127,7 @@ def build_dispatcher() -> Dispatcher:
         F.data.startswith("goals:"),
     )
     dp.message.register(
-        handlers.goals_limit_value_handler,
+        handlers.goals_target_value_handler,
         LimitDataState.waiting_for_limit_value,
         AllowedUserFilter(ALLOWED_USER_IDS),
     )
