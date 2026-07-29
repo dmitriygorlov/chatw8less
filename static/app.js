@@ -293,8 +293,23 @@ function renderMessageContent(message) {
     return escapeHtml(message.content).replaceAll("\n", "<br>");
 }
 
+function nutritionFocuses() {
+    const focuses = state.bootstrap?.settings?.nutrition_focuses;
+    return Array.isArray(focuses) && focuses.length ? focuses : ["calories"];
+}
+
 function formatMacroLine(total) {
-    return `${total.calories} ${t("common.calories")} · ${t("common.protein_short")} ${total.protein} ${t("common.grams")} · ${t("common.fat_short")} ${total.fat} ${t("common.grams")} · ${t("common.carbs_short")} ${total.carbs} ${t("common.grams")}`;
+    const parts = [];
+    nutritionFocuses().forEach((focus) => {
+        if (focus === "calories") {
+            parts.push(`${total.calories} ${t("common.calories")}`);
+        } else if (focus === "protein") {
+            parts.push(`${t("common.protein_short")} ${total.protein} ${t("common.grams")}`);
+        } else if (focus === "carbs") {
+            parts.push(`${t("common.carbs_short")} ${total.carbs} ${t("common.grams")}`);
+        }
+    });
+    return parts.join(" · ");
 }
 
 function isMobileLayout() {
@@ -511,7 +526,7 @@ function renderNutritionHistory(entries) {
                                     <div class="item-row">
                                         <div>
                                             <strong>${escapeHtml(item.name)}</strong>
-                                            <p>${item.amount_grams} ${t("common.grams")} · ${item.calories} ${t("common.calories")} · ${t("common.protein_short")} ${item.protein} · ${t("common.fat_short")} ${item.fat} · ${t("common.carbs_short")} ${item.carbs}</p>
+                                            <p>${item.amount_grams} ${t("common.grams")} · ${formatMacroLine(item)}</p>
                                         </div>
                                         <button type="button" class="ghost-button small-button" data-action="delete-item" data-date="${escapeHtml(day.date)}" data-meal="${meal.meal_number}" data-item="${index}">${t("web.delete")}</button>
                                     </div>
@@ -599,6 +614,14 @@ function renderLanguages(bootstrap) {
 function renderSettings(bootstrap) {
     renderModes(bootstrap);
     renderLanguages(bootstrap);
+    const focuses = new Set(bootstrap.settings.nutrition_focuses || ["calories"]);
+    document.querySelectorAll("[data-nutrition-focus]").forEach((input) => {
+        input.checked = focuses.has(input.value);
+    });
+    const calorieLimitSettings = $("calorie-limit-settings");
+    if (calorieLimitSettings) {
+        calorieLimitSettings.classList.toggle("hidden", !focuses.has("calories"));
+    }
     const input = $("daily-limit-input");
     if (input) {
         input.value = bootstrap.settings.daily_limit || "";
@@ -840,6 +863,28 @@ async function saveLimit() {
     }
     renderStats(response.stats);
     showToast(payload.daily_limit ? t("web.limit_saved") : t("web.limit_cleared"));
+}
+
+async function saveNutritionFocuses() {
+    const focuses = Array.from(
+        document.querySelectorAll("[data-nutrition-focus]:checked"),
+        (input) => input.value,
+    );
+    if (!focuses.length) {
+        throw new Error(t("web.focus_required"));
+    }
+    const response = await apiFetch("/api/settings/nutrition-focuses", {
+        method: "POST",
+        body: JSON.stringify({ focuses }),
+    });
+    if (state.bootstrap) {
+        state.bootstrap.settings = response.settings;
+        state.bootstrap.stats = response.stats;
+        renderSettings(state.bootstrap);
+        renderNutritionHistory(state.bootstrap.nutrition_history || []);
+    }
+    renderStats(response.stats);
+    showToast(t("web.focuses_saved"));
 }
 
 async function setMode(mode) {
@@ -1115,6 +1160,14 @@ function bindEvents() {
     $("save-limit-button").addEventListener("click", async () => {
         try {
             await saveLimit();
+        } catch (error) {
+            showToast(error.message || t("common.error"));
+        }
+    });
+
+    $("save-focuses-button").addEventListener("click", async () => {
+        try {
+            await saveNutritionFocuses();
         } catch (error) {
             showToast(error.message || t("common.error"));
         }

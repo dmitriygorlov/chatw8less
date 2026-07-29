@@ -14,6 +14,8 @@ from bot.i18n import DEFAULT_LANGUAGE, EXISTING_USER_DEFAULT_LANGUAGE, normalize
 
 DEFAULT_ASSISTANT_NAME = "Alex"
 MAX_ASSISTANT_NAME_LENGTH = 40
+NUTRITION_FOCUS_KEYS = ("calories", "protein", "carbs")
+DEFAULT_NUTRITION_FOCUSES = ("calories",)
 
 
 DB_LOCK = threading.RLock()
@@ -65,6 +67,7 @@ def init_db() -> None:
                 model_mode TEXT,
                 assistant_name TEXT NOT NULL DEFAULT 'Alex',
                 language_code TEXT NOT NULL DEFAULT 'ru',
+                nutrition_focuses TEXT NOT NULL DEFAULT '["calories"]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -134,6 +137,17 @@ def init_db() -> None:
                     "UPDATE users SET assistant_name = ? WHERE assistant_name IS NULL OR assistant_name = ''",
                     (DEFAULT_ASSISTANT_NAME,),
                 )
+            if "nutrition_focuses" not in columns:
+                conn.execute(
+                    """ALTER TABLE users
+                    ADD COLUMN nutrition_focuses TEXT NOT NULL DEFAULT '["calories"]'"""
+                )
+            conn.execute(
+                """UPDATE users
+                SET nutrition_focuses = ?
+                WHERE nutrition_focuses IS NULL OR nutrition_focuses = ''""",
+                (json.dumps(DEFAULT_NUTRITION_FOCUSES),),
+            )
 
         INITIALIZED_DB_PATHS.add(database_path)
 
@@ -322,6 +336,50 @@ def set_user_assistant_name(user_id: str, assistant_name: str) -> str:
             WHERE id = ?
             """,
             (normalized, _utcnow_str(), user_id),
+        )
+    return normalized
+
+
+def normalize_nutrition_focuses(
+    value: str | list[str] | tuple[str, ...] | None,
+    *,
+    use_default: bool = True,
+) -> list[str]:
+    parsed = value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            parsed = []
+
+    selected = set(parsed) if isinstance(parsed, (list, tuple, set)) else set()
+    normalized = [key for key in NUTRITION_FOCUS_KEYS if key in selected]
+    if normalized:
+        return normalized
+    if use_default:
+        return list(DEFAULT_NUTRITION_FOCUSES)
+    raise ValueError("Select at least one nutrition focus")
+
+
+def get_user_nutrition_focuses(user_id: str) -> list[str]:
+    user = get_user(user_id)
+    return normalize_nutrition_focuses(
+        user.get("nutrition_focuses") if user else None
+    )
+
+
+def set_user_nutrition_focuses(user_id: str, focuses: list[str]) -> list[str]:
+    normalized = normalize_nutrition_focuses(focuses, use_default=False)
+    init_db()
+    ensure_user(user_id)
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE users
+            SET nutrition_focuses = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (json.dumps(normalized), _utcnow_str(), user_id),
         )
     return normalized
 

@@ -19,8 +19,10 @@ from bot.config import (
 from bot.db import (
     get_user_assistant_name,
     get_user_language,
+    get_user_nutrition_focuses,
     set_user_assistant_name as persist_user_assistant_name,
     set_user_language as persist_user_language,
+    set_user_nutrition_focuses as persist_user_nutrition_focuses,
 )
 from bot.i18n import t
 from bot.i18n import (
@@ -140,7 +142,11 @@ def _parse_nutrition_payload(
     items = sanitize_items(parsed.get("items", []))
     items = _apply_explicit_energy_metadata(source_text, items)
     parsed["items"] = items
-    parsed["formatted_items"] = format_log_food_data({"items": items}, language_code)
+    parsed["formatted_items"] = format_log_food_data(
+        {"items": items},
+        language_code,
+        focuses=get_user_nutrition_focuses(user_id),
+    )
     parsed["display_text"] = "\n\n".join(
         part
         for part in [
@@ -392,6 +398,7 @@ def get_user_settings(
             if user
             else get_user_assistant_name(user_id)
         ),
+        "nutrition_focuses": get_user_nutrition_focuses(user_id),
     }
 
 
@@ -419,6 +426,11 @@ def set_language(user_id: str, language_code: str) -> dict[str, Any]:
 
 def set_assistant_name(user_id: str, assistant_name: str) -> dict[str, Any]:
     persist_user_assistant_name(user_id, assistant_name)
+    return get_user_settings(user_id)
+
+
+def set_nutrition_focuses(user_id: str, focuses: list[str]) -> dict[str, Any]:
+    persist_user_nutrition_focuses(user_id, focuses)
     return get_user_settings(user_id)
 
 
@@ -576,6 +588,7 @@ def get_statistics_bundle(
 ) -> dict[str, str]:
     user_data = user_data if user_data is not None else load_user_data_new(user_id)
     language_code = language_code or get_user_language(user_id)
+    focuses = get_user_nutrition_focuses(user_id)
     today = current_date_str()
     yesterday = (shifted_now().date() - timedelta(days=1)).strftime("%Y-%m-%d")
     return {
@@ -584,15 +597,17 @@ def get_statistics_bundle(
             today,
             f"📅 {t(language_code, 'stats.today')}",
             language_code,
+            focuses,
         ),
         "yesterday": format_day_statistics(
             user_data,
             yesterday,
             f"📆 {t(language_code, 'stats.yesterday')}",
             language_code,
+            focuses,
         ),
-        "last7": format_last_7_days_statistics(user_data, language_code),
-        "all": format_all_statistics(user_data, language_code),
+        "last7": format_last_7_days_statistics(user_data, language_code, focuses),
+        "all": format_all_statistics(user_data, language_code, focuses),
     }
 
 

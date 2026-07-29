@@ -120,6 +120,25 @@
                 </div>
                 <div id="section-settings-content" class="settings-stack">
                     <div>
+                        <p class="composer-label" data-i18n="web.nutrition_focus">{{ tr["web.nutrition_focus"] }}</p>
+                        <p class="settings-hint" data-i18n="web.nutrition_focus_hint">{{ tr["web.nutrition_focus_hint"] }}</p>
+                        <div id="nutrition-focus-options" class="focus-options">
+                            <label class="focus-option">
+                                <input type="checkbox" value="calories" data-nutrition-focus>
+                                <span data-i18n="nutrition_focus.calories">{{ tr["nutrition_focus.calories"] }}</span>
+                            </label>
+                            <label class="focus-option">
+                                <input type="checkbox" value="protein" data-nutrition-focus>
+                                <span data-i18n="nutrition_focus.protein">{{ tr["nutrition_focus.protein"] }}</span>
+                            </label>
+                            <label class="focus-option">
+                                <input type="checkbox" value="carbs" data-nutrition-focus>
+                                <span data-i18n="nutrition_focus.carbs">{{ tr["nutrition_focus.carbs"] }}</span>
+                            </label>
+                        </div>
+                        <button id="save-focuses-button" type="button" class="primary-button" data-i18n="web.save_focuses">{{ tr["web.save_focuses"] }}</button>
+                    </div>
+                    <div id="calorie-limit-settings">
                         <label class="composer-label" for="daily-limit-input" data-i18n="web.daily_limit">{{ tr["web.daily_limit"] }}</label>
                         <div class="inline-actions">
                             <input id="daily-limit-input" type="number" min="1" placeholder="1800">

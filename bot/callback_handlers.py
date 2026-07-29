@@ -7,7 +7,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.config import HOUR_SHIFT, MODEL_MODES, TOKENS_LOG_FILE
 from bot.chat_service import process_text_interaction
-from bot.db import get_user_language
+from bot.db import (
+    get_user_language,
+    get_user_nutrition_focuses,
+    set_user_nutrition_focuses,
+)
 from bot.i18n import t
 from bot.openai_client import get_openai_response
 from bot.states import EditNutritionState, LimitDataState, SaveNutritionData
@@ -630,22 +634,35 @@ async def stats_callback(callback: types.CallbackQuery):
     user_id = str(callback.from_user.id)
     language_code = get_user_language(user_id)
     user_data = load_user_data_new(user_id)
+    focuses = get_user_nutrition_focuses(user_id)
     period = callback.data
 
     if period == "stats_today":
         date_str = datetime.now().strftime("%Y-%m-%d")
         message_text = format_day_statistics(
-            user_data, date_str, f"📅 {t(language_code, 'stats.today')}", language_code
+            user_data,
+            date_str,
+            f"📅 {t(language_code, 'stats.today')}",
+            language_code,
+            focuses,
         )
     elif period == "stats_yesterday":
         date_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         message_text = format_day_statistics(
-            user_data, date_str, f"📆 {t(language_code, 'stats.yesterday')}", language_code
+            user_data,
+            date_str,
+            f"📆 {t(language_code, 'stats.yesterday')}",
+            language_code,
+            focuses,
         )
     elif period == "stats_7days":
-        message_text = format_last_7_days_statistics(user_data, language_code)
+        message_text = format_last_7_days_statistics(
+            user_data,
+            language_code,
+            focuses,
+        )
     elif period == "stats_all":
-        message_text = format_all_statistics(user_data, language_code)
+        message_text = format_all_statistics(user_data, language_code, focuses)
     else:
         message_text = t(language_code, "telegram.stats.unknown")
 
@@ -653,16 +670,42 @@ async def stats_callback(callback: types.CallbackQuery):
     await send_long_message(callback.message, message_text)
 
 
-async def limit_menu_callback(callback: types.CallbackQuery, state: FSMContext):
+async def goals_menu_callback(callback: types.CallbackQuery, state: FSMContext):
+    from bot.handlers import nutrition_goals_keyboard, nutrition_goals_text
+
     user_id = str(callback.from_user.id)
     language_code = get_user_language(user_id)
     user_data = load_user_data_new(user_id)
 
-    if callback.data == "limit_set":
-        await callback.message.answer(t(language_code, "telegram.limit.set_prompt"))
+    if callback.data.startswith("goals:toggle:"):
+        focus = callback.data.rsplit(":", maxsplit=1)[-1]
+        current = get_user_nutrition_focuses(user_id)
+        if focus in current:
+            updated = [item for item in current if item != focus]
+        else:
+            updated = [*current, focus]
+        try:
+            updated = set_user_nutrition_focuses(user_id, updated)
+        except ValueError:
+            return await callback.answer(
+                t(language_code, "telegram.goals.one_required"),
+                show_alert=True,
+            )
+
+        await callback.message.edit_text(
+            nutrition_goals_text(language_code, updated),
+            reply_markup=nutrition_goals_keyboard(language_code, updated),
+        )
+        await callback.answer(t(language_code, "telegram.goals.saved"))
+        return
+
+    if callback.data == "goals:limit:set":
+        await callback.answer()
+        await callback.message.answer(t(language_code, "telegram.goals.set_limit_prompt"))
         await state.set_state(LimitDataState.waiting_for_limit_value)
-    elif callback.data == "limit_view":
-        today = datetime.now().strftime("%Y-%m-%d")
+    elif callback.data == "goals:limit:view":
+        await callback.answer()
+        today = (datetime.now() + timedelta(hours=HOUR_SHIFT)).strftime("%Y-%m-%d")
         today_data = user_data.get(today, {})
         total_consumed = (
             sum(item["calories"] for meal in today_data.values() for item in meal)
@@ -675,7 +718,7 @@ async def limit_menu_callback(callback: types.CallbackQuery, state: FSMContext):
             await callback.message.answer(
                 t(
                     language_code,
-                    "telegram.limit.view_result",
+                    "telegram.goals.view_limit_result",
                     date=today,
                     limit=limit,
                     consumed=total_consumed,
@@ -683,7 +726,7 @@ async def limit_menu_callback(callback: types.CallbackQuery, state: FSMContext):
                 )
             )
         else:
-            await callback.message.answer(t(language_code, "telegram.limit.view_empty"))
+            await callback.message.answer(t(language_code, "telegram.goals.view_limit_empty"))
         await state.clear()
     await callback.message.edit_reply_markup(reply_markup=None)
 

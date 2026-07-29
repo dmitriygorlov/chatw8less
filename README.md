@@ -35,8 +35,9 @@ flowchart LR
 - Calculates nutrition per 100 g for recipes and mixed dishes.
 - Answers product, recipe, grocery, and nutrition questions with online search.
 - Saves meals and shows daily, weekly, and all-time nutrition statistics.
+- Lets each user focus the interface on calories, protein, carbohydrates, or any combination.
 - Shares message history and user settings between Telegram and the website.
-- Supports user-level language, model mode, daily limit, and assistant name.
+- Supports user-level nutrition focuses, language, model mode, daily limit, and assistant name.
 
 The assistant keeps a small, dedicated conversation context for natural follow-ups, while calorie-parsing requests remain isolated so earlier meals do not leak into a new calculation.
 

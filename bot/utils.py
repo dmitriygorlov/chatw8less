@@ -12,7 +12,7 @@ from bot.config import (
     ROUND_STAT,
     STORAGE_DIR,
 )
-from bot.db import load_user_state, save_user_state
+from bot.db import NUTRITION_FOCUS_KEYS, load_user_state, save_user_state
 from bot.i18n import t
 
 
@@ -561,39 +561,65 @@ def import_legacy_storage(storage_root: str) -> dict:
 # Localized formatting overrides. They intentionally live after the legacy
 # implementations so existing callers get translated output without a broad
 # rewrite of the older helper body.
-def format_log_food_data(data: dict, language_code: str | None = None) -> str:
+def _display_nutrition_fields(focuses: list[str] | None) -> list[str]:
+    if focuses is None:
+        return ["calories", "protein", "fat", "carbs"]
+    selected = set(focuses)
+    normalized = [key for key in NUTRITION_FOCUS_KEYS if key in selected]
+    return normalized or ["calories"]
+
+
+def _nutrition_parts(
+    language_code: str | None,
+    values: Mapping[str, float],
+    focuses: list[str] | None,
+) -> list[str]:
+    grams = t(language_code, "common.grams")
+    parts: list[str] = []
+    for field in _display_nutrition_fields(focuses):
+        value = round_stat(values.get(field, 0))
+        if field == "calories":
+            parts.append(f"{value} {t(language_code, 'common.calories')}")
+        elif field == "protein":
+            parts.append(f"{t(language_code, 'common.protein_short')} {value} {grams}")
+        elif field == "fat":
+            parts.append(f"{t(language_code, 'common.fat_short')} {value} {grams}")
+        elif field == "carbs":
+            parts.append(f"{t(language_code, 'common.carbs_short')} {value} {grams}")
+    return parts
+
+
+def format_log_food_data(
+    data: dict,
+    language_code: str | None = None,
+    focuses: list[str] | None = None,
+) -> str:
     items = sanitize_items(data.get("items", []))
     if not items:
         return t(language_code, "common.no_data")
 
-    total_cal = total_p = total_f = total_c = 0
+    totals = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
     lines: list[str] = []
     grams = t(language_code, "common.grams")
-    kcal = t(language_code, "common.calories")
-    protein = t(language_code, "common.protein_short")
-    fat = t(language_code, "common.fat_short")
-    carbs = t(language_code, "common.carbs_short")
 
     for item in items:
+        values = {
+            "calories": item["calories"],
+            "protein": item["protein"],
+            "fat": item["fat"],
+            "carbs": item["carbs"],
+        }
         lines.append(
             f"- {item['name']} ({item['amount_grams']} {grams}): "
-            f"{item['calories']} {kcal}, "
-            f"{protein} {item['protein']} {grams}, "
-            f"{fat} {item['fat']} {grams}, "
-            f"{carbs} {item['carbs']} {grams}"
+            f"{', '.join(_nutrition_parts(language_code, values, focuses))}"
         )
-        total_cal += item["calories"]
-        total_p += item["protein"]
-        total_f += item["fat"]
-        total_c += item["carbs"]
+        for field in totals:
+            totals[field] += item[field]
 
     lines.append("")
     lines.append(
         f"{t(language_code, 'stats.total')}: "
-        f"{round_stat(total_cal)} {kcal}, "
-        f"{protein} {round_stat(total_p)} {grams}, "
-        f"{fat} {round_stat(total_f)} {grams}, "
-        f"{carbs} {round_stat(total_c)} {grams}"
+        f"{', '.join(_nutrition_parts(language_code, totals, focuses))}"
     )
     return "\n".join(lines)
 
@@ -604,17 +630,61 @@ def _macro_line(
     protein_value: float,
     fat_value: float,
     carbs_value: float,
+    focuses: list[str] | None = None,
 ) -> str:
-    grams = t(language_code, "common.grams")
-    return (
-        f"{round_stat(calories)} {t(language_code, 'common.calories')}, "
-        f"{t(language_code, 'common.protein_short')} {round_stat(protein_value)} {grams}, "
-        f"{t(language_code, 'common.fat_short')} {round_stat(fat_value)} {grams}, "
-        f"{t(language_code, 'common.carbs_short')} {round_stat(carbs_value)} {grams}"
+    return ", ".join(
+        _nutrition_parts(
+            language_code,
+            {
+                "calories": calories,
+                "protein": protein_value,
+                "fat": fat_value,
+                "carbs": carbs_value,
+            },
+            focuses,
+        )
     )
 
 
-def format_day_statistics(user_data, date_str, title, language_code: str | None = None):
+def _focus_summary_lines(
+    language_code: str | None,
+    calories: float,
+    protein_value: float,
+    fat_value: float,
+    carbs_value: float,
+    focuses: list[str] | None,
+) -> list[str]:
+    values = {
+        "calories": calories,
+        "protein": protein_value,
+        "fat": fat_value,
+        "carbs": carbs_value,
+    }
+    labels = {
+        "calories": t(language_code, "stats.calories"),
+        "protein": t(language_code, "nutrition_focus.protein"),
+        "fat": t(language_code, "common.fat_short"),
+        "carbs": t(language_code, "nutrition_focus.carbs"),
+    }
+    units = {
+        "calories": t(language_code, "common.calories"),
+        "protein": t(language_code, "common.grams"),
+        "fat": t(language_code, "common.grams"),
+        "carbs": t(language_code, "common.grams"),
+    }
+    return [
+        f"• {labels[field]}: {round_stat(values[field])} {units[field]}"
+        for field in _display_nutrition_fields(focuses)
+    ]
+
+
+def format_day_statistics(
+    user_data,
+    date_str,
+    title,
+    language_code: str | None = None,
+    focuses: list[str] | None = None,
+):
     day_data = user_data.get(date_str)
     if not day_data:
         return t(language_code, "stats.no_meals_day", title=title)
@@ -630,36 +700,45 @@ def format_day_statistics(user_data, date_str, title, language_code: str | None 
         for item in items:
             msg += (
                 f" - {item['name']} ({round_stat(item['amount_grams'])} {t(language_code, 'common.grams')}): "
-                f"{_macro_line(language_code, item['calories'], item['protein'], item['fat'], item['carbs'])}\n"
+                f"{_macro_line(language_code, item['calories'], item['protein'], item['fat'], item['carbs'], focuses)}\n"
             )
             meal_calories += item["calories"]
             meal_protein += item["protein"]
             meal_fat += item["fat"]
             meal_carbs += item["carbs"]
 
-        msg += f"🔸 {t(language_code, 'stats.total')}: {_macro_line(language_code, meal_calories, meal_protein, meal_fat, meal_carbs)}\n\n"
+        msg += f"🔸 {t(language_code, 'stats.total')}: {_macro_line(language_code, meal_calories, meal_protein, meal_fat, meal_carbs, focuses)}\n\n"
         total_calories += meal_calories
         total_protein += meal_protein
         total_fat += meal_fat
         total_carbs += meal_carbs
 
     msg += f"🔷 {t(language_code, 'stats.day_total')}:\n"
-    msg += f"• {t(language_code, 'stats.calories')}: {round_stat(total_calories)} {t(language_code, 'common.calories')}\n"
-    if limit_cal:
+    msg += "\n".join(
+        _focus_summary_lines(
+            language_code,
+            total_calories,
+            total_protein,
+            total_fat,
+            total_carbs,
+            focuses,
+        )
+    )
+    msg += "\n"
+    if limit_cal and "calories" in _display_nutrition_fields(focuses):
         deficit = total_calories - limit_cal
         if deficit < 0:
             msg += f"🔥 {t(language_code, 'stats.limit_deficit')}: {round_stat(abs(deficit))} {t(language_code, 'common.calories')}\n"
         else:
             msg += f"⚠️ {t(language_code, 'stats.excess')}: {round_stat(deficit)} {t(language_code, 'common.calories')}\n"
-    msg += (
-        f"• {t(language_code, 'common.protein_short')}: {round_stat(total_protein)} {t(language_code, 'common.grams')}\n"
-        f"• {t(language_code, 'common.fat_short')}: {round_stat(total_fat)} {t(language_code, 'common.grams')}\n"
-        f"• {t(language_code, 'common.carbs_short')}: {round_stat(total_carbs)} {t(language_code, 'common.grams')}"
-    )
-    return msg
+    return msg.rstrip()
 
 
-def format_all_statistics(user_data, language_code: str | None = None):
+def format_all_statistics(
+    user_data,
+    language_code: str | None = None,
+    focuses: list[str] | None = None,
+):
     day_entries = list(_iter_day_entries(user_data or {}))
     if not day_entries:
         return f"📊 {t(language_code, 'stats.no_meals_all')}"
@@ -678,7 +757,7 @@ def format_all_statistics(user_data, language_code: str | None = None):
             day_protein += sum(item["protein"] for item in items)
             day_fat += sum(item["fat"] for item in items)
             day_carbs += sum(item["carbs"] for item in items)
-        msg += f" 🔹 {t(language_code, 'stats.total')}: {_macro_line(language_code, day_calories, day_protein, day_fat, day_carbs)}\n\n"
+        msg += f" 🔹 {t(language_code, 'stats.total')}: {_macro_line(language_code, day_calories, day_protein, day_fat, day_carbs, focuses)}\n\n"
         days += 1
         grand_total_calories += day_calories
         grand_total_protein += day_protein
@@ -686,22 +765,31 @@ def format_all_statistics(user_data, language_code: str | None = None):
         grand_total_carbs += day_carbs
 
     msg += f"🔷 {t(language_code, 'stats.total_all', days=days)}:\n"
-    msg += f"• {t(language_code, 'stats.calories')}: {round_stat(grand_total_calories)} {t(language_code, 'common.calories')}\n"
-    if limit_cal:
+    msg += "\n".join(
+        _focus_summary_lines(
+            language_code,
+            grand_total_calories,
+            grand_total_protein,
+            grand_total_fat,
+            grand_total_carbs,
+            focuses,
+        )
+    )
+    msg += "\n"
+    if limit_cal and "calories" in _display_nutrition_fields(focuses):
         deficit = grand_total_calories - limit_cal * days
         if deficit < 0:
             msg += f"🔥 {t(language_code, 'stats.limit_deficit')}: {round_stat(abs(deficit))} {t(language_code, 'common.calories')}\n"
         else:
             msg += f"⚠️ {t(language_code, 'stats.excess')}: {round_stat(deficit)} {t(language_code, 'common.calories')}\n"
-    msg += (
-        f"• {t(language_code, 'common.protein_short')}: {round_stat(grand_total_protein)} {t(language_code, 'common.grams')}\n"
-        f"• {t(language_code, 'common.fat_short')}: {round_stat(grand_total_fat)} {t(language_code, 'common.grams')}\n"
-        f"• {t(language_code, 'common.carbs_short')}: {round_stat(grand_total_carbs)} {t(language_code, 'common.grams')}\n"
-    )
-    return msg
+    return msg.rstrip()
 
 
-def format_last_7_days_statistics(user_data, language_code: str | None = None):
+def format_last_7_days_statistics(
+    user_data,
+    language_code: str | None = None,
+    focuses: list[str] | None = None,
+):
     if not user_data:
         return f"📈 {t(language_code, 'stats.last7_no_data')}"
 
@@ -730,7 +818,7 @@ def format_last_7_days_statistics(user_data, language_code: str | None = None):
             day_protein += sum(item["protein"] for item in items)
             day_fat += sum(item["fat"] for item in items)
             day_carbs += sum(item["carbs"] for item in items)
-        msg += f" 🔹 {t(language_code, 'stats.total')}: {_macro_line(language_code, day_calories, day_protein, day_fat, day_carbs)}\n\n"
+        msg += f" 🔹 {t(language_code, 'stats.total')}: {_macro_line(language_code, day_calories, day_protein, day_fat, day_carbs, focuses)}\n\n"
         total_days += 1
         grand_total_calories += day_calories
         grand_total_protein += day_protein
@@ -738,19 +826,28 @@ def format_last_7_days_statistics(user_data, language_code: str | None = None):
         grand_total_carbs += day_carbs
 
     msg += f"🔷 {t(language_code, 'stats.period_total', days=total_days)}:\n"
-    msg += f"• {t(language_code, 'stats.calories')}: {round_stat(grand_total_calories)} {t(language_code, 'common.calories')}\n"
-    if limit_cal and total_days:
+    msg += "\n".join(
+        _focus_summary_lines(
+            language_code,
+            grand_total_calories,
+            grand_total_protein,
+            grand_total_fat,
+            grand_total_carbs,
+            focuses,
+        )
+    )
+    msg += "\n"
+    if (
+        limit_cal
+        and total_days
+        and "calories" in _display_nutrition_fields(focuses)
+    ):
         deficit = grand_total_calories - limit_cal * total_days
         if deficit < 0:
             msg += f"🔥 {t(language_code, 'stats.limit_deficit')}: {round_stat(abs(deficit))} {t(language_code, 'common.calories')}\n"
         else:
             msg += f"⚠️ {t(language_code, 'stats.excess')}: {round_stat(deficit)} {t(language_code, 'common.calories')}\n"
-    msg += (
-        f"• {t(language_code, 'common.protein_short')}: {round_stat(grand_total_protein)} {t(language_code, 'common.grams')}\n"
-        f"• {t(language_code, 'common.fat_short')}: {round_stat(grand_total_fat)} {t(language_code, 'common.grams')}\n"
-        f"• {t(language_code, 'common.carbs_short')}: {round_stat(grand_total_carbs)} {t(language_code, 'common.grams')}\n"
-    )
-    return msg
+    return msg.rstrip()
 
 
 def resolve_model_mode(mode: str) -> dict:

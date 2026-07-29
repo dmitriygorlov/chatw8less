@@ -17,6 +17,7 @@ from bot.chat_service import log_exchange, process_text_interaction
 from bot.db import (
     get_user_assistant_name,
     get_user_language,
+    get_user_nutrition_focuses,
     set_user_language,
     set_user_passphrase,
     user_has_passphrase,
@@ -659,9 +660,14 @@ async def cmd_start(message: types.Message):
 
 async def cmd_help(message: types.Message):
     language_code = _message_language(message)
+    help_text = t(
+        language_code,
+        "telegram.help",
+        support_contact=SUPPORT_CONTACT,
+    ).replace("/limits", "/goals")
     return await send_long_message(
         message,
-        t(language_code, "telegram.help", support_contact=SUPPORT_CONTACT),
+        help_text,
         parse_mode="Markdown",
     )
 
@@ -788,19 +794,66 @@ async def cmd_stats(message: types.Message):
     )
 
 
-async def limit_command(message: types.Message, state: FSMContext):
-    language_code = _message_language(message)
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=t(language_code, "telegram.limit.set"), callback_data="limit_set")],
-            [InlineKeyboardButton(text=t(language_code, "telegram.limit.view"), callback_data="limit_view")],
-        ]
+def nutrition_goals_text(language_code: str, focuses: list[str]) -> str:
+    labels = [
+        t(language_code, f"nutrition_focus.{focus}")
+        for focus in focuses
+    ]
+    return t(
+        language_code,
+        "telegram.goals.menu",
+        focuses=", ".join(labels),
     )
-    await message.reply(t(language_code, "telegram.limit.menu"), reply_markup=keyboard)
+
+
+def nutrition_goals_keyboard(
+    language_code: str,
+    focuses: list[str],
+) -> InlineKeyboardMarkup:
+    selected = set(focuses)
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text=(
+                    f"{'✅' if focus in selected else '◻️'} "
+                    f"{t(language_code, f'nutrition_focus.{focus}')}"
+                ),
+                callback_data=f"goals:toggle:{focus}",
+            )
+        ]
+        for focus in ("calories", "protein", "carbs")
+    ]
+    if "calories" in selected:
+        buttons.extend(
+            [
+                [
+                    InlineKeyboardButton(
+                        text=t(language_code, "telegram.goals.set_limit"),
+                        callback_data="goals:limit:set",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=t(language_code, "telegram.goals.view_limit"),
+                        callback_data="goals:limit:view",
+                    )
+                ],
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def goals_command(message: types.Message, state: FSMContext):
+    language_code = _message_language(message)
+    focuses = get_user_nutrition_focuses(str(message.from_user.id))
+    await message.reply(
+        nutrition_goals_text(language_code, focuses),
+        reply_markup=nutrition_goals_keyboard(language_code, focuses),
+    )
     await state.set_state(LimitDataState.waiting_for_action)
 
 
-async def limit_value_handler(message: types.Message, state: FSMContext):
+async def goals_limit_value_handler(message: types.Message, state: FSMContext):
     language_code = _message_language(message)
     user_id = str(message.from_user.id)
     text = (message.text or "").strip()
@@ -810,7 +863,11 @@ async def limit_value_handler(message: types.Message, state: FSMContext):
     user_data = load_user_data_new(user_id)
     user_data["daily_limit"] = limit
     save_user_data_new(user_id, user_data)
-    await send_long_message(message, t(language_code, "telegram.limit.saved", limit=limit), method="reply")
+    await send_long_message(
+        message,
+        t(language_code, "telegram.goals.limit_saved", limit=limit),
+        method="reply",
+    )
     await state.clear()
 
 

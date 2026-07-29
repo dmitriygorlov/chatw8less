@@ -401,6 +401,42 @@ textarea {
     gap: 18px;
 }
 
+.settings-hint {
+    margin: -4px 0 10px;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.focus-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.focus-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-strong);
+    cursor: pointer;
+}
+
+.focus-option:has(input:checked) {
+    color: var(--brand-dark);
+    border-color: var(--brand);
+    background: var(--brand-soft);
+}
+
+.focus-option input {
+    margin: 0;
+    accent-color: var(--brand);
+}
+
 .stats-output {
     margin: 0;
     white-space: pre-wrap;

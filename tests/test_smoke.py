@@ -632,6 +632,23 @@ def test_web_settings_endpoints_update_limit_and_mode(isolated_env):
         assert limit_response.status_code == 200
         assert limit_response.json()["settings"]["daily_limit"] == 1800
 
+        focuses_response = client.post(
+            "/api/settings/nutrition-focuses",
+            json={"focuses": ["protein", "carbs"]},
+        )
+        assert focuses_response.status_code == 200
+        assert focuses_response.json()["settings"]["nutrition_focuses"] == [
+            "protein",
+            "carbs",
+        ]
+        assert db.get_user_nutrition_focuses("settings_user") == ["protein", "carbs"]
+
+        invalid_focuses_response = client.post(
+            "/api/settings/nutrition-focuses",
+            json={"focuses": []},
+        )
+        assert invalid_focuses_response.status_code == 400
+
         mode_response = client.post("/api/settings/mode", json={"mode": "smart"})
         assert mode_response.status_code == 200
         assert mode_response.json()["settings"]["mode"] == "smart"
@@ -701,6 +718,7 @@ def test_existing_users_receive_russian_language_on_db_migration(tmp_path, monke
     db.init_db()
     assert db.get_user("legacy")["language_code"] == "ru"
     assert db.get_user("legacy")["assistant_name"] == "Alex"
+    assert db.get_user_nutrition_focuses("legacy") == ["calories"]
 
 
 def test_new_telegram_user_uses_account_language_or_english(isolated_env):
@@ -730,6 +748,43 @@ def test_telegram_commands_are_localized():
     assert descriptions["stats"] == "Статистика питания"
     assert descriptions["online"] == "Поиск онлайн"
     assert descriptions["site"] == "Сайт и кодовая фраза"
+    assert descriptions["goals"] == "Цели питания"
+    assert "limits" not in descriptions
+
+
+def test_nutrition_focuses_filter_food_and_statistics_output(isolated_env):
+    items = [
+        {
+            "name": "meal",
+            "amount_grams": 100,
+            "calories": 180,
+            "protein": 10,
+            "fat": 6,
+            "carbs": 20,
+        }
+    ]
+    user_data = {"2026-07-29": {"1": items}}
+
+    food_text = utils.format_log_food_data(
+        {"items": items},
+        "en",
+        focuses=["protein", "carbs"],
+    )
+    stats_text = utils.format_day_statistics(
+        user_data,
+        "2026-07-29",
+        "Today",
+        "en",
+        ["protein", "carbs"],
+    )
+
+    assert "P 10 g" in food_text
+    assert "C 20 g" in food_text
+    assert "180 kcal" not in food_text
+    assert "F 6 g" not in food_text
+    assert "Protein: 10 g" in stats_text
+    assert "Carbohydrates: 20 g" in stats_text
+    assert "Calories:" not in stats_text
 
 
 def test_language_endpoint_can_generate_new_locale(isolated_env, monkeypatch):

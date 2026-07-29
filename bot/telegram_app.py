@@ -30,7 +30,7 @@ COMMANDS = (
     ("100", "telegram.command.100"),
     ("online", "telegram.command.online"),
     ("edit", "telegram.command.edit"),
-    ("limits", "telegram.command.limits"),
+    ("goals", "telegram.command.goals"),
     ("model", "telegram.command.model"),
     ("language", "telegram.command.language"),
     ("site", "telegram.command.site"),
@@ -117,17 +117,17 @@ def build_dispatcher() -> Dispatcher:
     )
 
     dp.message.register(
-        handlers.limit_command,
-        Command(commands=["limits"]),
+        handlers.goals_command,
+        Command(commands=["goals", "limits"]),
         AllowedUserFilter(ALLOWED_USER_IDS),
     )
     dp.callback_query.register(
-        callback_handlers.limit_menu_callback,
+        callback_handlers.goals_menu_callback,
         LimitDataState.waiting_for_action,
-        F.data.in_(["limit_set", "limit_view"]),
+        F.data.startswith("goals:"),
     )
     dp.message.register(
-        handlers.limit_value_handler,
+        handlers.goals_limit_value_handler,
         LimitDataState.waiting_for_limit_value,
         AllowedUserFilter(ALLOWED_USER_IDS),
     )

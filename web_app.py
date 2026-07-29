@@ -28,6 +28,7 @@ from bot.app_services import (
     set_language,
     set_daily_limit,
     set_model_mode,
+    set_nutrition_focuses,
     validate_limit,
 )
 from bot.chat_service import (
@@ -161,6 +162,10 @@ class LanguageRequest(BaseModel):
 
 class AssistantNameRequest(BaseModel):
     assistant_name: str
+
+
+class NutritionFocusesRequest(BaseModel):
+    focuses: list[str]
 
 
 class TextActionRequest(BaseModel):
@@ -508,6 +513,22 @@ async def api_settings_limit(request: Request, payload: LimitRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     settings = set_daily_limit(user["id"], normalized_limit)
+    return {
+        "settings": settings,
+        "stats": get_statistics_bundle(user["id"]),
+    }
+
+
+@app.post("/api/settings/nutrition-focuses")
+async def api_settings_nutrition_focuses(
+    request: Request,
+    payload: NutritionFocusesRequest,
+):
+    user = _require_user(request)
+    try:
+        settings = set_nutrition_focuses(user["id"], payload.focuses)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "settings": settings,
         "stats": get_statistics_bundle(user["id"]),
