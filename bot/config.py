@@ -21,9 +21,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ASSISTANT_CONTEXT_DIALOGS = max(0, int(os.getenv("ASSISTANT_CONTEXT_DIALOGS") or 3))
 
 # Text models configured via env
-GPT_MODEL_FAST = os.getenv("GPT_MODEL_FAST", "gpt-4o-mini")
-GPT_MODEL_SMART = os.getenv("GPT_MODEL_SMART", GPT_MODEL_FAST)
+GPT_MODEL_FAST = os.getenv("GPT_MODEL_FAST", "gpt-6-luna")
+GPT_MODEL_SMART = os.getenv("GPT_MODEL_SMART", "gpt-6.1-sol")
 GPT_MODEL_ASSISTANT = os.getenv("GPT_MODEL_ASSISTANT", GPT_MODEL_SMART)
+OPENAI_SERVICE_TIER = os.getenv("OPENAI_SERVICE_TIER", "fast").strip().lower()
+if OPENAI_SERVICE_TIER not in {"auto", "default", "flex", "priority", "fast"}:
+    raise ValueError("Unsupported OPENAI_SERVICE_TIER")
 
 # Optional overrides for vision-capable variants
 GPT_MODEL_FAST_VISION = os.getenv("GPT_MODEL_FAST_VISION") or None
@@ -31,16 +34,23 @@ GPT_MODEL_SMART_VISION = os.getenv("GPT_MODEL_SMART_VISION") or None
 
 # Optional reasoning effort for GPT-5-class models. Leave empty for models that
 # do not support reasoning parameters, such as GPT-4.1.
-_REASONING_EFFORTS = {"minimal", "low", "medium", "high"}
-_REASONING_ALIASES = {"none": "minimal"}
+_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 
 
 def _reasoning_effort_from_env(name: str) -> str | None:
     raw = (os.getenv(name) or "").strip().lower()
     if raw in {"", "0", "false", "off"}:
         return None
-    normalized = _REASONING_ALIASES.get(raw, raw)
-    return normalized if normalized in _REASONING_EFFORTS else None
+    return raw if raw in _REASONING_EFFORTS else None
+
+
+def reasoning_for_model(model: str, effort: str | None) -> str | None:
+    """Keep legacy models configurable and normalize the supported new families."""
+    if model == "gpt-6.1-sol" or model.startswith("gpt-6.1-sol-"):
+        return "low" if effort in {None, "none", "minimal"} else effort
+    if model == "gpt-6-luna" or model.startswith("gpt-6-luna-"):
+        return "none" if effort in {None, "minimal"} else effort
+    return effort
 
 
 GPT_REASONING_FAST = _reasoning_effort_from_env("GPT_REASONING_FAST")
@@ -58,14 +68,14 @@ MAX_TOKENS_ASSISTANT = int(os.getenv("MAX_TOKENS_ASSISTANT") or MAX_TOKENS_SMART
 
 MODEL_MODES = {
     "fast": {
-        "label": "⚡ Быстрая",
+        "label": "? ???????",
         "model": GPT_MODEL_FAST,
         "vision_model": GPT_MODEL_FAST_VISION or GPT_MODEL_FAST,
         "max_tokens": MAX_TOKENS_FAST,
         "reasoning_effort": GPT_REASONING_FAST,
     },
     "smart": {
-        "label": "🧠 Умная",
+        "label": "?? ?????",
         "model": GPT_MODEL_SMART,
         "vision_model": GPT_MODEL_SMART_VISION or GPT_MODEL_SMART,
         "max_tokens": MAX_TOKENS_SMART,
@@ -87,10 +97,10 @@ SYSTEM_PROMPT_FUNC = (
     "predefined schema. For example, the JSON must include:\n"
     "- intro_message: a brief introductory statement\n"
     "- items: an array with detailed data for each food item (name, amount_grams, calories, protein, fat, carbs)\n"
-    "- fun_addition: a playful extra: joke, fun fact, mini‑fitness idea or cooking tip\n\n"
-    "⚠️ All numeric fields (amount_grams, calories, protein, fat, carbs) **must** be non-null numbers. "
+    "- fun_addition: a playful extra: joke, fun fact, mini-fitness idea or cooking tip\n\n"
+    "?? All numeric fields (amount_grams, calories, protein, fat, carbs) **must** be non-null numbers. "
     "If an exact value cannot be determined, **estimate** a reasonable average rather than returning null.\n\n"
-    "Do not include total or summary fields—these will be calculated on the client side. "
+    "Do not include total or summary fields-these will be calculated on the client side. "
     "Prioritize accuracy and clarity in nutritional information, and maintain a supportive tone that encourages healthy habits. "
     "Ensure your responses are clear, concise, and friendly."
 )
@@ -117,8 +127,8 @@ SYSTEM_PROMPT_100 = (
     " Provide a short answer with a generalized dish name (if possible) and the"
     " total calories, protein, fat and carbs per 100 grams of the described food."
     " Respond in the language of the user's query. Format your reply as one or"
-    " two concise sentences, e.g.: 'Название: ... На 100 г: ... ккал, Б ... г, Ж"
-    " ... г, У ... г.'"
+    " two concise sentences, e.g.: '????????: ... ?? 100 ?: ... ????, ? ... ?, ?"
+    " ... ?, ? ... ?.'"
 )
 
 # Prompt for online search queries (nutrition, fitness, brands)
@@ -131,11 +141,11 @@ SYSTEM_PROMPT_ONLINE = (
     "\n\n**IMPORTANT RULES:**\n"
     "1. If you find reliable information via web search, provide it clearly with nutritional data.\n"
     "2. If web search does NOT return relevant results or you cannot find specific information, "
-    "you MUST explicitly state about it with: '⚠️' "
+    "you MUST explicitly state about it with: '??' "
     "Do NOT make up or hallucinate nutritional data if sources are unavailable.\n"
     "3. When citing sources, format them naturally at the end\n"
     "do NOT use inline markdown links like [text](url) in the middle of sentences.\n"
-    "4. Group all source links in a separate 'Источники:' section at the very end if multiple sources are used.\n"
+    "4. Group all source links in a separate '?????????:' section at the very end if multiple sources are used.\n"
     "\n"
     "Always respond in the language of the user's query (default: Russian). "
     "Be comprehensive but concise, and format your response clearly with bullet points or sections as needed."

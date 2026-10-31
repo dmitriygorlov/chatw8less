@@ -6,17 +6,21 @@ from bot.config import (
     OPENAI_API_KEY,
     OPENAI_MAX_TOKENS,
     OPENAI_PHOTO_DETAIL,
+    OPENAI_SERVICE_TIER,
+    reasoning_for_model,
     SYSTEM_PROMPT_FUNC,
     SYSTEM_PROMPT_VISION,
     SYSTEM_PROMPT_ONLINE,
 )
 
 
-# Глобальный асинхронный клиент, инициализирован один раз
+# ?????????? ??????????? ??????, ??????????????? ???? ???
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 
 def _apply_reasoning(request_params: dict, reasoning_effort: str | None) -> None:
+    request_params["service_tier"] = OPENAI_SERVICE_TIER
+    reasoning_effort = reasoning_for_model(request_params["model"], reasoning_effort)
     if reasoning_effort:
         request_params["reasoning"] = {"effort": reasoning_effort}
 
@@ -29,10 +33,10 @@ async def get_openai_response(
     max_tokens: int | None = None,
     reasoning_effort: str | None = None,
 ):
-    """Получение ответа от OpenAI (асинхронно).
+    """????????? ?????? ?? OpenAI (??????????).
 
-    При передаче ``function_name`` используется JSON Schema для строгого
-    структурированного ответа.
+    ??? ???????? ``function_name`` ???????????? JSON Schema ??? ????????
+    ?????????????????? ??????.
     """
 
     json_schema = {
@@ -44,7 +48,7 @@ async def get_openai_response(
                     "type": "string",
                     "description": (
                         "A brief introductory message in the language of the query, "
-                        "e.g. 'Вот твой подробный расчет калорий и БЖУ для приема пищи:'"
+                        "e.g. '??? ???? ????????? ?????? ??????? ? ??? ??? ?????? ????:'"
                     ),
                 },
                 "items": {
@@ -73,8 +77,8 @@ async def get_openai_response(
                 "fun_addition": {
                     "type": "string",
                     "description": (
-                        "A fun and varied addition that ‘colors’ the list: could be a joke, a quirky fitness mini‑challenge, "
-                        "a surprising food fact or a quick cooking hack—anything to make the summary more engaging."
+                        "A fun and varied addition that 'colors' the list: could be a joke, a quirky fitness mini-challenge, "
+                        "a surprising food fact or a quick cooking hack-anything to make the summary more engaging."
                     ),
                 },
             },
@@ -165,10 +169,10 @@ async def get_openai_online_response(
     max_tokens: int | None = None,
     reasoning_effort: str | None = None,
 ):
-    """Получение ответа от OpenAI с веб-поиском (асинхронно).
+    """????????? ?????? ?? OpenAI ? ???-??????? (??????????).
 
-    Используется для запросов о конкретных брендах, актуальной нутриционной
-    информации и фитнес-вопросов, требующих доступа к интернету.
+    ???????????? ??? ???????? ? ?????????? ???????, ?????????? ????????????
+    ?????????? ? ??????-????????, ????????? ??????? ? ?????????.
     """
 
     input_data = [
@@ -225,6 +229,9 @@ async def generate_locale_response(
     }
     return await client.responses.create(
         model=model or DEFAULT_GPT_MODEL,
+        service_tier=OPENAI_SERVICE_TIER,
+        **({"reasoning": {"effort": reasoning_for_model(model or DEFAULT_GPT_MODEL, None)}}
+           if reasoning_for_model(model or DEFAULT_GPT_MODEL, None) else {}),
         input=[
             {
                 "role": "system",

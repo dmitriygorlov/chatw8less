@@ -68,7 +68,7 @@ def test_migration_mode_serves_stub_without_starting_database_or_telegram(monkey
     with create_client() as client:
         response = client.get("/")
         assert response.status_code == 200
-        assert "ChatW8Less переехал" in response.text
+        assert "ChatW8Less ????????" in response.text
         assert f'href="{target}"' in response.text
         assert client.app.state.telegram_task is None
 
@@ -185,7 +185,7 @@ def test_shared_history_is_saved_and_read_via_web_api(isolated_env, monkeypatch)
 
     async def fake_analyze_food_text(user_id: str, text: str):
         return {
-            "display_text": f"Ответ для {user_id}: {text}",
+            "display_text": f"????? ??? {user_id}: {text}",
             "items": [
                 {
                     "name": "apple",
@@ -208,7 +208,7 @@ def test_shared_history_is_saved_and_read_via_web_api(isolated_env, monkeypatch)
         )
         assert login_response.status_code == 303
 
-        message_response = client.post("/api/message", json={"text": "70 грамм яблока"})
+        message_response = client.post("/api/message", json={"text": "70 ????? ??????"})
         assert message_response.status_code == 200
         payload = message_response.json()
         assert payload["saved"]["date"]
@@ -327,12 +327,12 @@ def test_online_followup_keeps_store_context(isolated_env, monkeypatch):
     with create_client() as client:
         client.post("/login", data={"phrase": "followup phrase"}, follow_redirects=False)
 
-        client.post("/api/online", json={"text": "Что во вкусвил самое вкусное?"})
-        response = client.post("/api/online", json={"text": "А что скажешь про манты?"})
+        client.post("/api/online", json={"text": "??? ?? ??????? ????? ????????"})
+        response = client.post("/api/online", json={"text": "? ??? ??????? ??? ??????"})
 
         assert response.status_code == 200
-        assert "ВкусВилл" in seen_inputs[-1] or "вкусвил" in seen_inputs[-1]
-        assert "А что скажешь про манты?" in seen_inputs[-1]
+        assert "????????" in seen_inputs[-1] or "???????" in seen_inputs[-1]
+        assert "? ??? ??????? ??? ??????" in seen_inputs[-1]
         assert "store" in seen_inputs[-1]
 
 
@@ -376,7 +376,7 @@ def test_web_food_reply_without_save_and_manual_save_flow(isolated_env, monkeypa
 
     async def fake_analyze_food_text(user_id: str, text: str):
         return {
-            "display_text": f"Разбор для {user_id}: {text}",
+            "display_text": f"?????? ??? {user_id}: {text}",
             "items": [
                 {
                     "name": "banana",
@@ -396,7 +396,7 @@ def test_web_food_reply_without_save_and_manual_save_flow(isolated_env, monkeypa
 
         analyze_response = client.post(
             "/api/analyze-text",
-            json={"text": "100 грамм банана", "save": False},
+            json={"text": "100 ????? ??????", "save": False},
         )
         assert analyze_response.status_code == 200
         analyze_payload = analyze_response.json()
@@ -554,10 +554,10 @@ def test_food_analysis_does_not_double_count_explicit_per_100g_value(
         status = "completed"
         arguments = json.dumps(
             {
-                "intro_message": "Расчёт",
+                "intro_message": "??????",
                 "items": [
                     {
-                        "name": "Желе клубника без сахара",
+                        "name": "???? ???????? ??? ??????",
                         "amount_grams": 125,
                         "calories": 8.75,
                         "protein": 0,
@@ -565,7 +565,7 @@ def test_food_analysis_does_not_double_count_explicit_per_100g_value(
                         "carbs": 0,
                     },
                     {
-                        "name": "Калорийность на 100 г",
+                        "name": "???????????? ?? 100 ?",
                         "amount_grams": 100,
                         "calories": 7,
                         "protein": 0,
@@ -605,21 +605,21 @@ def test_food_analysis_does_not_double_count_explicit_per_100g_value(
     result = asyncio.run(
         app_services.analyze_food_text(
             "jelly_user",
-            "Желе клубника из лавки без сахара 125 г 7 килокалорий на 100 г",
+            "???? ???????? ?? ????? ??? ?????? 125 ? 7 ??????????? ?? 100 ?",
         )
     )
 
     assert len(result["items"]) == 1
     assert result["items"][0]["amount_grams"] == 125
     assert result["items"][0]["calories"] == 8.75
-    assert "Калорийность на 100 г" not in result["display_text"]
+    assert "???????????? ?? 100 ?" not in result["display_text"]
     assert "15.8" not in result["display_text"]
     assert "never as a separate food item" in seen_prompts[0]
 
 
-def test_reasoning_effort_none_aliases_to_minimal(monkeypatch):
+def test_reasoning_effort_none_is_preserved(monkeypatch):
     monkeypatch.setenv("GPT_REASONING_FAST", "none")
-    assert config._reasoning_effort_from_env("GPT_REASONING_FAST") == "minimal"
+    assert config._reasoning_effort_from_env("GPT_REASONING_FAST") == "none"
 
 
 def test_web_settings_endpoints_update_limit_and_mode(isolated_env):
@@ -760,11 +760,11 @@ def test_telegram_commands_are_localized():
         for command in telegram_app._localized_commands("ru")
     }
 
-    assert descriptions["help"] == "Помощь"
-    assert descriptions["stats"] == "Статистика питания"
-    assert descriptions["online"] == "Поиск онлайн"
-    assert descriptions["site"] == "Сайт и кодовая фраза"
-    assert descriptions["goals"] == "Цели питания"
+    assert descriptions["help"] == "??????"
+    assert descriptions["stats"] == "?????????? ???????"
+    assert descriptions["online"] == "????? ??????"
+    assert descriptions["site"] == "???? ? ??????? ?????"
+    assert descriptions["goals"] == "???? ???????"
     assert "limits" not in descriptions
 
 
@@ -974,11 +974,11 @@ def test_telegram_user_can_set_web_passphrase_without_manual_cli(isolated_env, m
     monkeypatch.setattr(handlers, "send_long_message", fake_send_long_message)
 
     asyncio.run(handlers.site_command(FakeMessage(user_id), fake_state))
-    assert "Кодовая фраза ещё не настроена" in sent_messages[-1]["text"]
+    assert "??????? ????? ??? ?? ?????????" in sent_messages[-1]["text"]
 
     asyncio.run(handlers.site_phrase_handler(FakeMessage(user_id, text="my phrase 123"), fake_state))
     assert db.user_has_passphrase(user_id) is True
     linked_user = db.get_user_by_passphrase("my phrase 123")
     assert linked_user is not None
     assert linked_user["id"] == user_id
-    assert "Кодовая фраза сохранена" in sent_messages[-1]["text"]
+    assert "??????? ????? ?????????" in sent_messages[-1]["text"]
