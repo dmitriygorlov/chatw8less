@@ -76,19 +76,19 @@ async def main():
         rules_node = next(n.value for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'NUTRITION_INPUT_RULES' for t in n.targets))
         assert isinstance(rules_node, ast.Call) and rules_node.func.attr == 'strip'
         rules = ast.literal_eval(rules_node.func.value).strip()
-        food_prompt = locale['prompt.food'].format(language_name='???????') + '\n\n' + rules
+        food_prompt = locale['prompt.food'].format(language_name='Русский') + '\n\n' + rules
         for mode, expected in [('fast', 'none'), ('smart', 'low')]:
             settings = config.MODEL_MODES[mode]
-            req = await client.get_openai_response('?????? 150 ? ? ??????????? ?????? 2% 125 ?.', function_name='log_nutrition_data', system_prompt=food_prompt, model=settings['model'], max_tokens=settings['max_tokens'], reasoning_effort=settings['reasoning_effort'])
+            req = await client.get_openai_response('Яблоко 150 г и натуральный йогурт 2% 125 г.', function_name='log_nutrition_data', system_prompt=food_prompt, model=settings['model'], max_tokens=settings['max_tokens'], reasoning_effort=settings['reasoning_effort'])
             assert req['reasoning'] == {'effort': expected}
             assert req['tools'][0]['name'] == 'log_nutrition_data'
             fixtures.append({'name': mode + '_nutrition', 'request': req})
             retry = await client.get_openai_response('Synthetic retry: apple 150 g.', function_name='log_nutrition_data', model=settings['model'], max_tokens=4096, reasoning_effort=settings['reasoning_effort'])
             assert retry['service_tier'] == 'fast' and retry['reasoning']['effort'] == expected
-            req = await client.get_openai_vision_response(synthetic_image(), prompt=locale['prompt.vision'].format(language_name='???????'), model=settings['vision_model'], max_tokens=settings['max_tokens'], reasoning_effort=settings['reasoning_effort'])
+            req = await client.get_openai_vision_response(synthetic_image(), prompt=locale['prompt.vision'].format(language_name='Русский'), model=settings['vision_model'], max_tokens=settings['max_tokens'], reasoning_effort=settings['reasoning_effort'])
             assert req['model'] == settings['model'] and req['reasoning']['effort'] == expected
             fixtures.append({'name': mode + '_vision_no_food', 'request': req})
-        online = await client.get_openai_online_response('Find one official USDA page about protein. Answer briefly.', prompt='Your assistant name for this user is Test. ' + locale['prompt.online'].format(language_name='???????'), model=config.GPT_MODEL_ASSISTANT, max_tokens=config.MAX_TOKENS_ASSISTANT, reasoning_effort='none')
+        online = await client.get_openai_online_response('Find one official USDA page about protein. Answer briefly.', prompt='Your assistant name for this user is Test. ' + locale['prompt.online'].format(language_name='Русский'), model=config.GPT_MODEL_ASSISTANT, max_tokens=config.MAX_TOKENS_ASSISTANT, reasoning_effort='none')
         assert online['tools'] == [{'type': 'web_search'}]
         assert online['reasoning']['effort'] == 'low'
         # Smoke-only bound, not a production behavior change.
