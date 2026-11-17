@@ -20,10 +20,12 @@ __pycache__/
 .vscode/
 
 # GitHub/Copilot local instructions
-.github/
+.github/*
+!.github/workflows/
 
 # venv
 .venv/
+.venv*/
 
 # add thrash subdir
 __/
