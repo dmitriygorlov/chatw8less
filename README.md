@@ -226,7 +226,15 @@ On Windows with Python 3.14.10 and the locked dependencies:
 - `python -m tools.demo`: passed; temporary demo data removed.
 - `uv pip check --python .venv314/Scripts/python.exe --no-cache`: 44 packages compatible.
 - `python -m compileall -q bot web_app.py tools tests`: passed.
-- The official `python:3.14.10-slim` image manifest exists; image build/run was not performed.
+- Docker Desktop Linux engine 29.5.3: the production Dockerfile built successfully
+  using `python:3.14.10-slim`. The resulting image passed the offline demo with
+  `--network none --read-only --tmpfs /tmp`.
+- A derived test image installed `requirements-lock.txt` with `--require-hashes`:
+  30 Linux tests passed, the eight-request contract check passed, and `pip check`
+  reported no broken requirements.
+- The production image's default Uvicorn command served `/healthz` and the login
+  page successfully inside a network-isolated container with a fictional key,
+  temporary SQLite/logs, no host volumes and no published ports.
 
 The baseline dependencies also passed the existing 27 smoke tests plus the first two
 new demo/isolation tests on Python 3.13.7. The final run emitted one warning about an
@@ -235,8 +243,8 @@ were changed. Restricted Windows execution initially stalled on asyncio's intern
 loopback socket pair; the successful runs allowed that local mechanism while retaining
 the harness's external HTTP blocks.
 
-GitHub-hosted CI, Linux/container runtime, browser UI, live OpenAI/Telegram and any
-production deployment were not run. No model quality/cost/latency measurements were
+GitHub-hosted CI, browser UI and live OpenAI/Telegram calls were not run as part of
+these offline checks. No model quality/cost/latency measurements were
 made. These checks support review of a local change, not a production rollout claim.
 
 ## Security
